@@ -17,6 +17,7 @@ class Coordinator:
                 text += user_text + "\n"
 
         print(f"Submitted text:\n{text}")
-        speech.speak(text)    
+        speech.speak(text)
         speech.speak("The application will now quit. Goodbye.")
         print("Quitting.")
+        return text
