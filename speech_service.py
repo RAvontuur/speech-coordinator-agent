@@ -36,10 +36,21 @@ class SpeechService:
 
         return result.text
 
-    def speak(self,text):
-
+    def speak(self, text):
         synth = speechsdk.SpeechSynthesizer(
             speech_config=self.speech_config
         )
-
         synth.speak_text_async(text).get()
+
+    def text_to_speech_file(self, text, output_path):
+        """Synthesize text to speech and save to audio file."""
+        audio_config = speechsdk.audio.AudioOutputConfig(filename=output_path)
+        synth = speechsdk.SpeechSynthesizer(
+            speech_config=self.speech_config,
+            audio_config=audio_config
+        )
+        result = synth.speak_text(text)
+        if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+            return output_path
+        else:
+            raise Exception(f"Speech synthesis failed: {result.reason}")

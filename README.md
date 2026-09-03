@@ -90,6 +90,60 @@ curl -X POST http://localhost:8000/run \
 
 - **404 Not Found** - Invalid endpoint path
 
+### POST /synthesize
+
+Converts text from a file to speech and saves the audio output.
+
+**Request:**
+```bash
+curl -X POST http://localhost:8000/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"/path/to/text_file.txt"}'
+```
+
+**Request body:**
+```json
+{
+  "filename": "/path/to/text_file.txt"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "audio_file": "/path/to/text_file.wav"
+}
+```
+
+The endpoint:
+1. Reads text from the specified file
+2. Uses Azure Text-to-Speech to synthesize the audio
+3. Saves the audio as a WAV file at the same path with `.wav` extension
+4. Returns the path to the generated audio file
+
+**Error responses:**
+
+- **400 Bad Request** - Missing or invalid `filename` parameter, or file is empty:
+  ```json
+  {
+    "error": "filename must be a non-empty string"
+  }
+  ```
+
+- **404 Not Found** - File does not exist:
+  ```json
+  {
+    "error": "file not found: /path/to/file.txt"
+  }
+  ```
+
+- **500 Internal Server Error** - Synthesis failed:
+  ```json
+  {
+    "error": "synthesis failed: ..."
+  }
+  ```
+
 ## Usage Examples
 
 ### Python Requests
@@ -123,17 +177,70 @@ const data = await response.json();
 console.log("Submitted text:", data.text);
 ```
 
+### Text-to-Speech File Synthesis
+
+**Python:**
+```python
+import requests
+
+# Create a text file
+with open("my_text.txt", "w") as f:
+    f.write("This is the text to convert to speech.")
+
+response = requests.post(
+    "http://localhost:8000/synthesize",
+    json={"filename": "my_text.txt"}
+)
+
+data = response.json()
+print("Audio saved to:", data["audio_file"])  # my_text.wav
+```
+
+**curl:**
+```bash
+curl -X POST http://localhost:8000/synthesize \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"/path/to/document.txt"}'
+
+# Response:
+# {"audio_file": "/path/to/document.wav"}
+```
+
+**JavaScript/Node.js:**
+```javascript
+const filename = "my_text.txt";
+
+const response = await fetch("http://localhost:8000/synthesize", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ filename })
+});
+
+const data = await response.json();
+console.log("Audio file:", data.audio_file);  // my_text.wav
+```
+
 ## How It Works
 
+### POST /run
 1. The client sends a POST request with an initial message
 2. The server speaks the message using Azure Text-to-Speech
 3. The server listens for user input using Azure Speech-to-Text
 4. User input is collected until the user says "submit"
 5. The collected text is spoken back and returned to the client
 
+### POST /synthesize
+1. The client sends a filename path in the request
+2. The server reads text from the file
+3. Azure Text-to-Speech synthesizes the text to audio
+4. The audio is saved as a WAV file at the same path with `.wav` extension
+5. The path to the audio file is returned to the client
+
 ## Notes
 
-- The endpoint is blocking and will remain open for the duration of the speech session
+- The `/run` endpoint is blocking and will remain open for the duration of the speech session
 - Ensure your microphone is enabled and properly configured
 - The application requires active internet connection for Azure Cognitive Services
 - Network timeouts should be set to at least 5 minutes (300 seconds)
