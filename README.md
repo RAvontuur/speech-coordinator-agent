@@ -92,7 +92,7 @@ curl -X POST http://localhost:8000/run \
 
 ### POST /synthesize
 
-Converts text from a file to speech and saves the audio output.
+Converts a markdown file into an iOS-compatible, file-backed audio plan package.
 
 **Request:**
 ```bash
@@ -108,18 +108,14 @@ curl -X POST http://localhost:8000/synthesize \
 }
 ```
 
-**Response (200 OK):**
-```json
-{
-  "audio_file": "/path/to/text_file.wav"
-}
-```
+**Response (200 OK):** The response contains paths for the generated package, TTS text, WAV, timing manifest, and annotations document. The package directory can be copied to the iPhone or iCloud Drive.
 
 The endpoint:
-1. Reads text from the specified file
-2. Uses Azure Text-to-Speech to synthesize the audio
-3. Saves the audio as a WAV file at the same path with `.wav` extension
-4. Returns the path to the generated audio file
+1. Converts markdown to TTS-friendly text using the `markdown-to-tts-text` skill rules
+2. Synthesizes each sentence as a numbered WAV segment and concatenates the segments
+3. Writes `plan.tts.txt`, `plan.wav`, `plan.timing.json`, `annotations.json`, and an `audio/` directory
+4. Records exact sentence character and sample offsets, plus text and audio hashes
+5. Returns the package paths and manifest
 
 **Error responses:**
 
@@ -202,8 +198,8 @@ curl -X POST http://localhost:8000/synthesize \
   -H "Content-Type: application/json" \
   -d '{"filename":"/path/to/document.txt"}'
 
-# Response:
-# {"audio_file": "/path/to/document.wav"}
+# Response includes:
+# {"plan": {"package_dir": "/path/to/document", ...}}
 ```
 
 **JavaScript/Node.js:**

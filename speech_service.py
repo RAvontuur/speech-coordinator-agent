@@ -45,6 +45,9 @@ class SpeechService:
     def text_to_speech_file(self, text, output_path):
         """Synthesize text to speech and save to audio file."""
         audio_config = speechsdk.audio.AudioOutputConfig(filename=output_path)
+        self.speech_config.set_speech_synthesis_output_format(
+            speechsdk.SpeechSynthesisOutputFormat.Riff24Khz16BitMonoPcm
+        )
         synth = speechsdk.SpeechSynthesizer(
             speech_config=self.speech_config,
             audio_config=audio_config

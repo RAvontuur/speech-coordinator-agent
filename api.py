@@ -1,8 +1,8 @@
 import json
 import os
-import pathlib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+from audio_plan import create_audio_plan
 from coordinator import Coordinator
 from speech_service import SpeechService
 
@@ -52,27 +52,9 @@ class CoordinatorHandler(BaseHTTPRequestHandler):
             self.send_json({"error": f"file not found: {filename}"}, 404)
             return
 
-        # Read text from file
-        try:
-            with open(filename, "r", encoding="utf-8") as f:
-                text = f.read()
-        except (OSError, IOError) as e:
-            self.send_json({"error": f"failed to read file: {str(e)}"}, 400)
-            return
-
-        if not text.strip():
-            self.send_json({"error": "file is empty"}, 400)
-            return
-
-        # Generate output path with .wav extension
-        input_path = pathlib.Path(filename)
-        output_path = input_path.with_suffix(".wav")
-
-        # Synthesize and save
         try:
             speech = SpeechService()
-            speech.text_to_speech_file(text, str(output_path))
-            self.send_json({"audio_file": str(output_path)})
+            self.send_json({"plan": create_audio_plan(filename, speech)})
         except Exception as e:
             self.send_json({"error": f"synthesis failed: {str(e)}"}, 500)
 
