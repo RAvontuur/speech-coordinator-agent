@@ -4,13 +4,17 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var audioPlayer = AudioPlayerModel()
+    @StateObject private var annotationRecorder = AnnotationRecorder()
     @State private var manifest: TimingManifest?
     @State private var annotations: [Annotation] = []
+    @State private var annotationDocument = AnnotationDocument(annotations: [])
     @State private var showingImporter = false
     @State private var selectedRate: Float = 1.0
     @State private var errorMessage: String?
     @State private var packageFolder: URL?
     @State private var annotationPlayer: AVAudioPlayer?
+    @State private var selectedAnnotationID: String?
+    @State private var recordingReply = false
 
     var body: some View {
         NavigationStack {
@@ -89,6 +93,16 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity)
 
+                if annotationRecorder.isRecording {
+                    recordingControls
+                } else {
+                    Button("Record annotation", systemImage: "mic.circle.fill") {
+                        beginRecording(replyTo: nil)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+                }
+
                 Picker("Speech rate", selection: $selectedRate) {
                     Text("0.75x").tag(Float(0.75))
                     Text("1x").tag(Float(1.0))
@@ -104,6 +118,7 @@ struct ContentView: View {
                             .font(.headline)
                         ForEach(annotations) { annotation in
                             Button {
+                                selectedAnnotationID = annotation.id
                                 audioPlayer.seek(to: annotation.timestampSeconds)
                                 playFirstRecording(of: annotation)
                             } label: {
@@ -117,12 +132,36 @@ struct ContentView: View {
                                 }
                             }
                             .buttonStyle(.bordered)
+
+                            if selectedAnnotationID == annotation.id && !annotationRecorder.isRecording {
+                                Button("Record reply", systemImage: "arrowshape.turn.up.left.circle") {
+                                    beginRecording(replyTo: annotation)
+                                }
+                                .font(.subheadline)
+                            }
                         }
                     }
                 }
             }
             .padding()
         }
+    }
+
+    private var recordingControls: some View {
+        VStack(spacing: 10) {
+            Label(recordingReply ? "Recording reply" : "Recording annotation", systemImage: "record.circle")
+                .foregroundStyle(.red)
+            Text(formatTime(annotationRecorder.elapsedTime))
+                .font(.title2.monospacedDigit())
+            HStack {
+                Button("Cancel", role: .cancel) { annotationRecorder.cancel() }
+                Button("Stop", systemImage: "stop.circle.fill") { annotationRecorder.stop() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func importPackage(result: Result<[URL], Error>) {
@@ -135,12 +174,72 @@ struct ContentView: View {
             let manifestData = try Data(contentsOf: manifestURL)
             manifest = try JSONDecoder().decode(TimingManifest.self, from: manifestData)
             if let data = try? Data(contentsOf: annotationsURL) {
-                annotations = (try? JSONDecoder().decode(AnnotationDocument.self, from: data))?.annotations ?? []
+                if let document = try? JSONDecoder().decode(AnnotationDocument.self, from: data) {
+                    annotationDocument = document
+                    annotations = document.annotations
+                }
             }
             let audioURL = folder.appendingPathComponent(manifest?.audioFile ?? "plan.wav")
             try audioPlayer.load(url: audioURL)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func beginRecording(replyTo annotation: Annotation?) {
+        guard let packageFolder else {
+            errorMessage = "Open a plan package before recording."
+            return
+        }
+        audioPlayer.pause()
+        recordingReply = annotation != nil
+        annotationRecorder.requestPermissionAndStart(in: packageFolder, completion: { url, duration in
+            saveRecording(url: url, duration: duration, replyTo: annotation)
+        }, onDenied: { message in
+            errorMessage = message
+        })
+    }
+
+    private func saveRecording(url: URL, duration: Double, replyTo annotation: Annotation?) {
+        guard let packageFolder, let manifest else { return }
+        do {
+            let file = AnnotationFile(
+                audioFile: "audio/\(url.lastPathComponent)",
+                recordedAt: ISO8601DateFormatter().string(from: Date()),
+                durationSeconds: duration
+            )
+            if let annotation {
+                guard let index = annotations.firstIndex(where: { $0.id == annotation.id }) else { return }
+                annotations[index] = Annotation(
+                    annotationID: annotation.annotationID,
+                    sentenceID: annotation.sentenceID,
+                    timestampSeconds: annotation.timestampSeconds,
+                    annotationText: annotation.annotationText,
+                    audioFiles: annotation.audioFiles + [file]
+                )
+            } else {
+                let sentenceID = currentSentence(in: manifest)?.sentenceID
+                let newAnnotation = Annotation(
+                    annotationID: "a-\(UUID().uuidString)",
+                    sentenceID: sentenceID,
+                    timestampSeconds: audioPlayer.currentTime,
+                    annotationText: nil,
+                    audioFiles: [file]
+                )
+                annotations.append(newAnnotation)
+                selectedAnnotationID = newAnnotation.id
+            }
+            annotationDocument = AnnotationDocument(
+                schemaVersion: annotationDocument.schemaVersion,
+                planID: annotationDocument.planID ?? manifest.planID,
+                audioGeneration: annotationDocument.audioGeneration,
+                manifestFile: annotationDocument.manifestFile ?? "plan.timing.json",
+                annotations: annotations
+            )
+            try AnnotationStore.save(annotationDocument, to: packageFolder.appendingPathComponent("annotations.json"))
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            errorMessage = "Unable to save annotation: \(error.localizedDescription)"
         }
     }
 

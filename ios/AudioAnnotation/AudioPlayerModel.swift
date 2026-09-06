@@ -12,6 +12,9 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     func load(url: URL) throws {
         stop()
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(.playback, mode: .spokenAudio)
+        try session.setActive(true)
         player = try AVAudioPlayer(contentsOf: url)
         player?.delegate = self
         player?.prepareToPlay()
@@ -29,6 +32,13 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
             startTimer()
         }
         isPlaying = player.isPlaying
+    }
+
+    func pause() {
+        player?.pause()
+        isPlaying = false
+        stopTimer()
+        currentTime = player?.currentTime ?? currentTime
     }
 
     func seek(by seconds: Double) {
