@@ -68,7 +68,12 @@ class CoordinatorHandler(BaseHTTPRequestHandler):
 
 
 def run_server(host="0.0.0.0", port=8000):
-    HTTPServer((host, port), CoordinatorHandler).serve_forever()
+    speech = SpeechService()
+    _, stop_audio_plan_task = speech.start_audio_plan_task()
+    try:
+        HTTPServer((host, port), CoordinatorHandler).serve_forever()
+    finally:
+        stop_audio_plan_task.set()
 
 
 if __name__ == "__main__":

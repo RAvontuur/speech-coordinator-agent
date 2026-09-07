@@ -34,9 +34,13 @@ A REST API service that coordinates speech recognition and synthesis using Azure
    ```env
    AZURE_SPEECH_KEY=your_speech_key_here
    AZURE_SPEECH_REGION=your_region_here
+  ACTIVE_AUDIO_PLAN=/Users/ravontuur/Library/Mobile Documents/com~apple~CloudDocs/audio/example-audio-plan
+  AUDIO_PLAN_INTERVAL_SECONDS=10
    ```
    
    Replace `your_speech_key_here` and `your_region_here` with your Azure Cognitive Services credentials.
+
+The server also runs a background audio-plan task. It checks the active plan's `audio/` directory at the configured interval. For every new `.m4a` annotation recording it creates adjacent `.stt.txt` and `.stt.wav` files using Azure Speech-to-Text and Text-to-Speech. The task retries incomplete files on the next interval and does not repeat files whose two outputs already exist.
 
 ## Running the Application
 
