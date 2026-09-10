@@ -11,6 +11,7 @@
 		A00000000000000000000000013 /* PlanModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000000023 /* PlanModels.swift */; };
 		A00000000000000000000000014 /* AudioPlayerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000000024 /* AudioPlayerModel.swift */; };
 		A00000000000000000000000015 /* AnnotationRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000000026 /* AnnotationRecorder.swift */; };
+		A00000000000000000000000016 /* AnnotationPlaybackModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000000027 /* AnnotationPlaybackModel.swift */; };
 		A00000000000000000000011 /* AudioAnnotationApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* AudioAnnotationApp.swift */; };
 /* End PBXBuildFile section */
 
@@ -19,6 +20,7 @@
 		A00000000000000000000000023 /* PlanModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanModels.swift; sourceTree = "<group>"; };
 		A00000000000000000000000024 /* AudioPlayerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerModel.swift; sourceTree = "<group>"; };
 		A00000000000000000000000026 /* AnnotationRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationRecorder.swift; sourceTree = "<group>"; };
+		A00000000000000000000000027 /* AnnotationPlaybackModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationPlaybackModel.swift; sourceTree = "<group>"; };
 		A00000000000000000000000025 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000020 /* AudioAnnotation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioAnnotation.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000021 /* AudioAnnotationApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAnnotationApp.swift; sourceTree = "<group>"; };
@@ -51,6 +53,7 @@
 				A00000000000000000000000023 /* PlanModels.swift */,
 				A00000000000000000000000024 /* AudioPlayerModel.swift */,
 				A00000000000000000000000026 /* AnnotationRecorder.swift */,
+				A00000000000000000000000027 /* AnnotationPlaybackModel.swift */,
 				A00000000000000000000000025 /* Info.plist */,
 			);
 			path = AudioAnnotation;
@@ -136,6 +139,7 @@
 				A00000000000000000000000013 /* PlanModels.swift in Sources */,
 				A00000000000000000000000014 /* AudioPlayerModel.swift in Sources */,
 				A00000000000000000000000015 /* AnnotationRecorder.swift in Sources */,
+				A00000000000000000000000016 /* AnnotationPlaybackModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

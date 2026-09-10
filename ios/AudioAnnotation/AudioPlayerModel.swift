@@ -24,6 +24,7 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
 
     func togglePlayback() {
         guard let player else { return }
+        guard activatePlaybackSession() else { return }
         if player.isPlaying {
             player.pause()
             stopTimer()
@@ -31,6 +32,13 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
             player.play()
             startTimer()
         }
+        isPlaying = player.isPlaying
+    }
+
+    func play() {
+        guard let player, activatePlaybackSession() else { return }
+        player.play()
+        startTimer()
         isPlaying = player.isPlaying
     }
 
@@ -56,6 +64,18 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
     func setRate(_ rate: Float) {
         player?.enableRate = true
         player?.rate = rate
+    }
+
+    @discardableResult
+    func activatePlaybackSession() -> Bool {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
+            return true
+        } catch {
+            return false
+        }
     }
 
     func stop() {

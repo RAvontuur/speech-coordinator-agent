@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @StateObject private var audioPlayer = AudioPlayerModel()
     @StateObject private var annotationRecorder = AnnotationRecorder()
+    @StateObject private var annotationPlayback = AnnotationPlaybackModel()
     @State private var manifest: TimingManifest?
     @State private var annotations: [Annotation] = []
     @State private var annotationDocument = AnnotationDocument(annotations: [])
@@ -12,9 +13,9 @@ struct ContentView: View {
     @State private var selectedRate: Float = 1.0
     @State private var errorMessage: String?
     @State private var packageFolder: URL?
-    @State private var annotationPlayer: AVAudioPlayer?
     @State private var selectedAnnotationID: String?
     @State private var recordingReply = false
+    @State private var expandedAnnotationIDs: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -82,7 +83,10 @@ struct ContentView: View {
                     Button("Back 10", systemImage: "gobackward.10") {
                         audioPlayer.seek(by: -10)
                     }
-                    Button(action: audioPlayer.togglePlayback) {
+                    Button {
+                        annotationPlayback.stop()
+                        audioPlayer.togglePlayback()
+                    } label: {
                         Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.system(size: 48))
                     }
@@ -112,39 +116,91 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .onChange(of: selectedRate) { _, rate in audioPlayer.setRate(rate) }
 
-                if !annotations.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Annotations")
-                            .font(.headline)
-                        ForEach(annotations) { annotation in
-                            Button {
-                                selectedAnnotationID = annotation.id
-                                audioPlayer.seek(to: annotation.timestampSeconds)
-                                playFirstRecording(of: annotation)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "waveform.circle")
-                                    Text(formatTime(annotation.timestampSeconds))
-                                    Spacer()
-                                    Text(annotation.annotationText ?? "Annotation")
-                                        .lineLimit(1)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .buttonStyle(.bordered)
-
-                            if selectedAnnotationID == annotation.id && !annotationRecorder.isRecording {
-                                Button("Record reply", systemImage: "arrowshape.turn.up.left.circle") {
-                                    beginRecording(replyTo: annotation)
-                                }
-                                .font(.subheadline)
-                            }
-                        }
-                    }
-                }
+                annotationsView
             }
             .padding()
         }
+    }
+
+    @ViewBuilder
+    private var annotationsView: some View {
+        if !annotations.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Annotations")
+                    .font(.headline)
+                ForEach(Array(annotations.enumerated()), id: \.offset) { _, annotation in
+                    annotationRow(annotation)
+                }
+            }
+        }
+    }
+
+    private func annotationRow(_ annotation: Annotation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                selectedAnnotationID = annotation.id
+                playAnnotationThread(annotation)
+            } label: {
+                HStack {
+                    Image(systemName: "waveform.circle")
+                    Text(formatTime(annotation.timestampSeconds))
+                    Spacer()
+                    Text(annotation.annotationText ?? "Annotation")
+                        .lineLimit(1)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.bordered)
+            .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                withAnimation {
+                    _ = expandedAnnotationIDs.insert(annotation.id)
+                }
+            })
+
+            if expandedAnnotationIDs.contains(annotation.id) {
+                annotationThreadPanels(annotation)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func annotationThreadPanels(_ annotation: Annotation) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(annotation.audioFiles.enumerated()), id: \.offset) { index, recording in
+                Button {
+                    playRecording(recording, in: annotation)
+                } label: {
+                    HStack {
+                        Image(systemName: index == 0 ? "mic.circle" : "arrowshape.turn.up.left.circle")
+                        Text(index == 0 ? "Original annotation" : "Reply \(index)")
+                        Spacer()
+                        if let duration = recording.durationSeconds {
+                            Text(formatTime(duration))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.leading, 16)
+                }
+                .buttonStyle(.bordered)
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        removeRecording(recording, from: annotation)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+            }
+
+            if selectedAnnotationID == annotation.id && !annotationRecorder.isRecording {
+                Button("Record reply", systemImage: "arrowshape.turn.up.left.circle") {
+                    beginRecording(replyTo: annotation)
+                }
+                .font(.subheadline)
+                .padding(.leading, 16)
+            }
+        }
+        .padding(.vertical, 4)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var recordingControls: some View {
@@ -192,6 +248,7 @@ struct ContentView: View {
             return
         }
         audioPlayer.pause()
+        annotationPlayback.stop()
         recordingReply = annotation != nil
         annotationRecorder.requestPermissionAndStart(in: packageFolder, completion: { url, duration in
             saveRecording(url: url, duration: duration, replyTo: annotation)
@@ -247,12 +304,72 @@ struct ContentView: View {
         manifest.sentences.first { audioPlayer.currentTime >= $0.startSeconds && audioPlayer.currentTime < $0.endSeconds }
     }
 
-    private func playFirstRecording(of annotation: Annotation) {
-        guard let recording = annotation.audioFiles.first else { return }
+    private func playAnnotationThread(_ annotation: Annotation) {
+        audioPlayer.seek(to: annotation.timestampSeconds)
+        let urls = annotation.audioFiles.flatMap(annotationAudioURLs)
+        do {
+            try annotationPlayback.play(urls: urls) {
+                audioPlayer.play()
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func playRecording(_ recording: AnnotationFile, in annotation: Annotation) {
+        do {
+            try annotationPlayback.play(urls: annotationAudioURLs(recording))
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func annotationAudioURLs(_ recording: AnnotationFile) -> [URL] {
         let url = packageFolder?.appendingPathComponent(recording.audioFile) ?? URL(fileURLWithPath: recording.audioFile)
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        annotationPlayer = try? AVAudioPlayer(contentsOf: url)
-        annotationPlayer?.play()
+        var urls = [url]
+        let sttURL = url.deletingPathExtension().appendingPathExtension("stt.wav")
+        if FileManager.default.fileExists(atPath: sttURL.path) {
+            urls.append(sttURL)
+        }
+        return urls
+    }
+
+    private func removeRecording(_ recording: AnnotationFile, from annotation: Annotation) {
+        annotationPlayback.stop()
+        guard let annotationIndex = annotations.firstIndex(where: { $0.id == annotation.id }) else { return }
+        let remainingFiles = annotation.audioFiles.filter { $0.id != recording.id }
+        annotations[annotationIndex] = Annotation(
+            annotationID: annotation.annotationID,
+            sentenceID: annotation.sentenceID,
+            timestampSeconds: annotation.timestampSeconds,
+            annotationText: annotation.annotationText,
+            audioFiles: remainingFiles
+        )
+        if remainingFiles.isEmpty {
+            annotations.remove(at: annotationIndex)
+            expandedAnnotationIDs.remove(annotation.id)
+            if selectedAnnotationID == annotation.id {
+                selectedAnnotationID = nil
+            }
+        }
+        guard let manifest, let packageFolder else { return }
+        annotationDocument = AnnotationDocument(
+            schemaVersion: annotationDocument.schemaVersion,
+            planID: annotationDocument.planID ?? manifest.planID,
+            audioGeneration: annotationDocument.audioGeneration,
+            manifestFile: annotationDocument.manifestFile ?? "plan.timing.json",
+            annotations: annotations
+        )
+        do {
+            try AnnotationStore.save(annotationDocument, to: packageFolder.appendingPathComponent("annotations.json"))
+            try? FileManager.default.removeItem(at: packageFolder.appendingPathComponent(recording.audioFile))
+            let sttURL = packageFolder.appendingPathComponent(recording.audioFile).deletingPathExtension().appendingPathExtension("stt.wav")
+            try? FileManager.default.removeItem(at: sttURL)
+            let textURL = packageFolder.appendingPathComponent(recording.audioFile).deletingPathExtension().appendingPathExtension("stt.txt")
+            try? FileManager.default.removeItem(at: textURL)
+        } catch {
+            errorMessage = "Unable to delete annotation: \(error.localizedDescription)"
+        }
     }
 
     private func formatTime(_ seconds: Double) -> String {
