@@ -1,6 +1,6 @@
 # Local Ticket System
 
-Tickets are Markdown files stored in this directory. The filename is the stable ticket identifier followed by a short title, for example `OC-001-outdoor-coding-agent.md`.
+Tickets are Markdown files stored in its ticket directory. The name of the ticket directory is the same as the file (without extension). The directory should be used to store artifacts related to the ticket. When a ticket is closed, the user may choose to archive the ticket and its artifacts together. This keeps the system clean without deleting the ticket itself.
 
 ## Ticket Format
 
@@ -44,6 +44,8 @@ Use these states exactly:
 - `closed`: accepted and excluded from future audio plans.
 
 Only `ready` tickets may enter implementation. An implementation moves to `in_progress` before code changes, then to `review` after validation. Keep a ticket in `review` until the user or the repository workflow closes it. State changes append an entry to `History`; do not erase prior entries.
+
+Examples of valid state values include `state: ready`, `state: review`, and `state: closed`.
 
 ## Plan Inclusion
 
