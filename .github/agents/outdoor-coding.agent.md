@@ -33,9 +33,10 @@ Use the ticket system's existing names and schema. Map equivalent maturity names
 ### Step 1: Process the latest Audio Plan
 
 1. Identify the latest or configured Audio Plan and inspect its transcript, annotations, timing metadata, and source text.
-2. Convert each actionable annotation into one of three outcomes: update an existing ticket that is not yet refined, create a new ticket for a newly identified task, or add a clearly scoped rework item to a ticket in progress.
-3. Link related annotations and tickets where the local schema supports links. Capture the user's intent in concise ticket language, including acceptance criteria and unresolved questions.
-4. Do not start implementation in this step unless the workflow explicitly requests it and the ticket is already ready.
+2. Read `annotations.json` and process each annotation entry in context: for each annotation, replace each `.m4a` audio file path with the sibling `.stt.txt` file, read the STT transcripts for all audio files attached to that annotation, concatenate them into one plain-text note, and combine that note with the original sentence text and `sentence_id` from the plan timing data as the source of meaning.
+3. Convert each actionable annotation into one of three outcomes: update an existing ticket that is not yet refined, create a new ticket for a newly identified task, or add a clearly scoped rework item to a ticket in progress.
+4. For each actionable annotation, determine whether it belongs to an existing ticket by matching its topic, affected area, and sentence context to the ticket identifier and description; if a matching ticket exists, record the annotation context on that ticket and update the ticket's related field or equivalent relationship metadata if the local schema supports it. Capture the user's intent in concise ticket language, including acceptance criteria and unresolved questions.
+5. Do not start implementation in this step unless the workflow explicitly requests it and the ticket is already ready.
 
 ### Step 2: Implement ready tickets
 
