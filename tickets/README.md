@@ -37,15 +37,16 @@ The body must contain these sections:
 Use these states exactly:
 
 - `new`: captured but not yet refined.
+- `refined`: a user has reviewed and clarified the ticket, but it is intentionally delayed and is not yet ready for implementation.
 - `ready`: objective, acceptance criteria, affected area, and validation approach are concrete.
 - `in_progress`: actively being implemented.
 - `review`: implementation and validation are complete; awaiting user review.
 - `blocked`: work cannot proceed; record the blocker and next action.
 - `closed`: accepted and excluded from future audio plans.
 
-Only `ready` tickets may enter implementation. An implementation moves to `in_progress` before code changes, then to `review` after validation. Keep a ticket in `review` until the user or the repository workflow closes it. State changes append an entry to `History`; do not erase prior entries.
+Only tickets in `ready` state are ready for implementation. A user may move a ticket to `refined` via annotation or review feedback to delay implementation until a later point. The agent must not change a ticket to `refined`, `ready`, or `closed`; those transitions require user review completion and a recorded user decision. An implementation moves to `in_progress` before code changes, then to `review` after validation. Keep a ticket in `review` until the user or the repository workflow closes it. State changes append an entry to `History`; do not erase prior entries.
 
-Examples of valid state values include `state: ready`, `state: review`, and `state: closed`.
+Examples of valid state values include `state: refined`, `state: ready`, `state: review`, and `state: closed`.
 
 ## Plan Inclusion
 

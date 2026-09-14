@@ -29,6 +29,8 @@ Before changing or creating tickets, read:
 
 If `tickets/README.md` is missing or the repository has no recognized ticket directory, stop and report the missing artifact instead of creating a parallel ticket store.
 
+A user may set a ticket to `refined` via annotation or explicit review feedback; this intentionally delays agent implementation. The agent is not allowed to move a ticket to `refined`, `ready`, or `closed` on its own. Those transitions require user review completion and a recorded user decision.
+
 ## Ticket Schema Contract
 
 The canonical ticket schema lives in `tickets/README.md`. Use it directly and do not define a second format.
@@ -59,13 +61,14 @@ The required body sections are:
 The supported states are exactly:
 
 - `new`
+- `refined`
 - `ready`
 - `in_progress`
 - `review`
 - `blocked`
 - `closed`
 
-Only tickets in `ready` state may start implementation. A ticket moves to `in_progress` before code changes, then to `review` after validation. Keep a ticket in `review` until the user or the repository workflow closes it. Never overwrite older history entries.
+Only tickets in `ready` state are ready for implementation. A ticket may be moved to `refined` by a user through annotation or review feedback to intentionally delay implementation. The agent must not change a ticket to `refined`, `ready`, or `closed` on its own; those transitions require user review completion and a recorded user decision. A ticket moves to `in_progress` before code changes, then to `review` after validation. Keep a ticket in `review` until the user or the repository workflow closes it. Never overwrite older history entries.
 
 ## Discovery Workflow
 
@@ -101,6 +104,7 @@ When creating a ticket:
 - include a meaningful imperative title
 - set `state` to `new` until the objective, criteria, affected area, and validation approach are concrete
 - add an initial `History` entry describing creation and evidence
+- if the user explicitly marks the ticket as `refined` through annotations or review feedback, record that state in `History` and keep the ticket out of implementation until the user later marks it `ready`
 
 When updating a ticket:
 
@@ -112,7 +116,9 @@ When updating a ticket:
 
 ## Transition Logic
 
-- `new` -> `ready`: only when objective, acceptance criteria, affected area, and validation approach are concrete
+- `new` -> `refined`: only via explicit user review or annotation feedback, not by the agent
+- `new` -> `ready`: only when objective, acceptance criteria, affected area, and validation approach are concrete and the user has explicitly accepted or signaled readiness
+- `refined` -> `ready`: only by explicit user review completion; the agent may not promote it automatically
 - `ready` -> `in_progress`: begins implementation and records evidence
 - `in_progress` -> `review`: after implementation and focused validation are complete
 - `review` -> `closed`: only by explicit user acceptance or repository workflow, not by test success alone
@@ -153,9 +159,12 @@ tickets = Path('tickets')
 readme = tickets / 'README.md'
 assert readme.exists(), 'tickets/README.md is missing'
 text = readme.read_text(encoding='utf-8')
+assert 'state: refined' in text, 'refined state not documented'
 assert 'state: ready' in text, 'ready state not documented'
 assert 'state: review' in text, 'review state not documented'
 assert 'state: closed' in text, 'closed state not documented'
+assert 'Only tickets in `ready` state are ready for implementation' in readme.read_text(encoding='utf-8') or 'Only tickets in `ready` state are ready for implementation' in text, 'ready-only implementation rule not documented'
+assert 'The agent must not change a ticket to `refined`, `ready`, or `closed`' in readme.read_text(encoding='utf-8') or 'The agent must not change a ticket to `refined`, `ready`, or `closed`' in text, 'agent review guard not documented'
 
 ticket_dirs = sorted(p for p in tickets.iterdir() if p.is_dir())
 assert ticket_dirs, 'no ticket directories were found under tickets/'
