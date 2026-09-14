@@ -6,6 +6,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from path_utils import normalize_path
+
 load_dotenv()
 
 import azure.cognitiveservices.speech as speechsdk
@@ -65,7 +67,7 @@ class SpeechService:
 
     def speech_to_text_file(self, input_path):
         """Transcribe an audio file with Azure Speech-to-Text."""
-        input_path = Path(input_path).expanduser().resolve()
+        input_path = normalize_path(input_path)
         with tempfile.TemporaryDirectory(prefix="audio-plan-stt-") as temporary_dir:
             wav_path = Path(temporary_dir) / "input.wav"
             self._convert_to_pcm_wav(input_path, wav_path)
@@ -142,7 +144,7 @@ class SpeechService:
 
     def process_annotation_file(self, audio_path):
         """Create STT text and TTS WAV files for one annotation recording."""
-        audio_path = Path(audio_path).expanduser().resolve()
+        audio_path = normalize_path(audio_path)
         text_path = audio_path.with_name(f"{audio_path.stem}.stt.txt")
         wav_path = audio_path.with_name(f"{audio_path.stem}.stt.wav")
 
@@ -157,12 +159,12 @@ class SpeechService:
 
     def start_audio_plan_task(self, stop_event=None):
         """Poll the active plan's audio directory for unprocessed M4A files."""
-        plan_path = Path(
+        plan_path = normalize_path(
             os.getenv(
                 "ACTIVE_AUDIO_PLAN",
                 "/Users/ravontuur/Library/Mobile Documents/com~apple~CloudDocs/audio/example-audio-plan",
             )
-        ).expanduser()
+        )
         interval = float(os.getenv("AUDIO_PLAN_INTERVAL_SECONDS", "10"))
         if interval <= 0:
             raise ValueError("AUDIO_PLAN_INTERVAL_SECONDS must be greater than zero")

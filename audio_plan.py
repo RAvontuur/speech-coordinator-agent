@@ -7,6 +7,8 @@ import uuid
 import wave
 from pathlib import Path
 
+from path_utils import normalize_path
+
 
 def markdown_to_tts_text(markdown: str) -> str:
     footnotes = {
@@ -89,14 +91,14 @@ def _append_wav(output: wave.Wave_write, segment: Path):
 
 
 def create_audio_plan(source_path: str, speech_service, output_dir: str | None = None) -> dict:
-    source = Path(source_path).expanduser().resolve()
+    source = normalize_path(source_path)
     source_text = source.read_text(encoding="utf-8")
     tts_text = markdown_to_tts_text(source_text)
     if not tts_text.strip():
         raise ValueError("file has no speakable text")
 
     plan_id = source.stem[:-7] if source.stem.endswith(".prompt") else source.stem
-    package = Path(output_dir).expanduser().resolve() if output_dir else source.parent / plan_id
+    package = normalize_path(output_dir) if output_dir else source.parent / plan_id
     package.mkdir(parents=True, exist_ok=True)
     audio_dir = package / "audio"
     audio_dir.mkdir(exist_ok=True)
@@ -147,7 +149,11 @@ def create_audio_plan(source_path: str, speech_service, output_dir: str | None =
     }
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     annotations_path.write_text(json.dumps(annotations, indent=2) + "\n", encoding="utf-8")
-    shutil.copyfile(source, package / source.name)
+
+    target_source_copy = package / source.name
+    if source.resolve() != target_source_copy.resolve():
+        shutil.copyfile(source, target_source_copy)
+
     return {
         "package_dir": str(package),
         "source_file": str(package / source.name),
