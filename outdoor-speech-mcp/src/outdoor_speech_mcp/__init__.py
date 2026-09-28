@@ -1,0 +1,1 @@
+"""Local MCP server for the outdoor speech workflow."""

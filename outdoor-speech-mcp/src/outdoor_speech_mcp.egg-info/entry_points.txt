@@ -1,0 +1,2 @@
+[console_scripts]
+outdoor-speech-mcp = outdoor_speech_mcp.server:main

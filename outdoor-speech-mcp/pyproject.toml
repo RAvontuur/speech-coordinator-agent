@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "outdoor-speech-mcp"
+version = "0.1.0"
+description = "Local MCP server for Azure speech coordination and audio-plan generation"
+requires-python = ">=3.10"
+dependencies = [
+    "azure-cognitiveservices-speech>=1.37.0",
+    "mcp>=1.0.0,<2",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+outdoor-speech-mcp = "outdoor_speech_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

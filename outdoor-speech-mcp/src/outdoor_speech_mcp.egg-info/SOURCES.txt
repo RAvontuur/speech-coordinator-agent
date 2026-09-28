@@ -1,0 +1,13 @@
+pyproject.toml
+src/outdoor_speech_mcp/__init__.py
+src/outdoor_speech_mcp/audio_plan.py
+src/outdoor_speech_mcp/coordinator.py
+src/outdoor_speech_mcp/path_utils.py
+src/outdoor_speech_mcp/server.py
+src/outdoor_speech_mcp/speech_service.py
+src/outdoor_speech_mcp.egg-info/PKG-INFO
+src/outdoor_speech_mcp.egg-info/SOURCES.txt
+src/outdoor_speech_mcp.egg-info/dependency_links.txt
+src/outdoor_speech_mcp.egg-info/entry_points.txt
+src/outdoor_speech_mcp.egg-info/requires.txt
+src/outdoor_speech_mcp.egg-info/top_level.txt

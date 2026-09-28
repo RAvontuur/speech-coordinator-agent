@@ -1,5 +1,5 @@
-from api import run_server
+from outdoor_speech_mcp.server import main
 
 
 if __name__ == "__main__":
-	run_server()
+    main()
