@@ -7,3 +7,4 @@ plans/*
 test/*
 ios/AudioAnnotation.xcodeproj/project.xcworkspace/xcuserdata/ravontuur.xcuserdatad/UserInterfaceState.xcuserstate
 outdoor-speech-mcp/src/outdoor_speech_mcp/__pycache__/*
+tests/__pycache__/*

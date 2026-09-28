@@ -8,6 +8,7 @@ local process rather than connecting to an HTTP server.
 
 - Python 3.10+
 - Azure Cognitive Services Speech credentials
+- An OpenAI API key to use `ask_llm`
 - `ffmpeg` on `PATH` for M4A transcription
 
 ## Install
@@ -22,6 +23,8 @@ Create a `.env` file in the repository root or export these variables:
 ```env
 AZURE_SPEECH_KEY=your_speech_key_here
 AZURE_SPEECH_REGION=your_region_here
+OPENAI_API_KEY=your_openai_api_key_here
+OPENAI_MODEL=gpt-4o-mini
 ACTIVE_AUDIO_PLAN=/path/to/audio-plan
 AUDIO_PLAN_INTERVAL_SECONDS=10
 ```
@@ -37,7 +40,9 @@ Use the installed console script as the local MCP command:
       "command": "/absolute/path/to/.venv/bin/outdoor-speech-mcp",
       "env": {
         "AZURE_SPEECH_KEY": "your_speech_key_here",
-        "AZURE_SPEECH_REGION": "your_region_here"
+        "AZURE_SPEECH_REGION": "your_region_here",
+        "OPENAI_API_KEY": "your_openai_api_key_here",
+        "OPENAI_MODEL": "gpt-4o-mini"
       }
     }
   }
@@ -58,6 +63,9 @@ The repository wrapper also starts the same server:
   iOS-compatible plan package used by AudioAnnotation.
 - `transcribe_annotation(audio_path)` creates the adjacent `.stt.txt` and
   `.stt.wav` files for an annotation recording.
+- `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's
+  text response. It uses `OPENAI_MODEL` when `model` is omitted (default
+  `gpt-4o-mini`) and requires `OPENAI_API_KEY` in the MCP server environment.
 
 The speech implementation and its local dependencies live in
 `outdoor-speech-mcp/src/outdoor_speech_mcp`. Repository plan synchronization

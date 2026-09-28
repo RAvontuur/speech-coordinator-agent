@@ -6,12 +6,14 @@ from mcp.server.fastmcp import FastMCP
 
 from .audio_plan import create_audio_plan
 from .coordinator import Coordinator
+from .llm_service import LLMService
 from .speech_service import SpeechService
 
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 mcp = FastMCP("outdoor-speech")
 speech = SpeechService()
+llm = LLMService()
 
 
 @mcp.tool()
@@ -36,6 +38,12 @@ def transcribe_annotation(audio_path: str) -> dict:
     """Transcribe an audio annotation and create its adjacent replay WAV file."""
     text_path, wav_path = speech.process_annotation_file(audio_path)
     return {"text_file": str(text_path), "audio_file": str(wav_path), "text": text_path.read_text(encoding="utf-8")}
+
+
+@mcp.tool()
+def ask_llm(prompt: str, model: str | None = None) -> str:
+    """Ask an OpenAI model a text prompt; set OPENAI_API_KEY in the server environment."""
+    return llm.ask(prompt, model)
 
 
 def main():
