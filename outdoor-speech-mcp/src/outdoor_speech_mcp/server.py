@@ -30,7 +30,7 @@ def synthesize_audio_plan(filename: str, output_dir: str | None = None) -> dict:
     source = Path(filename).expanduser()
     if not source.is_file():
         raise FileNotFoundError(f"file not found: {filename}")
-    return create_audio_plan(str(source), speech, output_dir)
+    return create_audio_plan(str(source), speech, llm, output_dir)
 
 
 @mcp.tool()

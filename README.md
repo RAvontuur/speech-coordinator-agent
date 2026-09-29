@@ -8,7 +8,7 @@ local process rather than connecting to an HTTP server.
 
 - Python 3.10+
 - Azure Cognitive Services Speech credentials
-- An OpenAI API key to use `ask_llm`
+- An OpenAI API key to use `ask_llm` and synthesize audio plans
 - `ffmpeg` on `PATH` for M4A transcription
 
 ## Install
@@ -59,8 +59,9 @@ The repository wrapper also starts the same server:
 
 - `run_speech_coordinator(message)` speaks a prompt, listens until the user
   says `submit`, and returns the collected transcript.
-- `synthesize_audio_plan(filename, output_dir)` converts Markdown into the
-  iOS-compatible plan package used by AudioAnnotation.
+- `synthesize_audio_plan(filename, output_dir)` transforms Markdown into
+  listenable text with the packaged markdown-to-TTS skill and an OpenAI model,
+  then creates the iOS-compatible plan package used by AudioAnnotation.
 - `transcribe_annotation(audio_path)` creates the adjacent `.stt.txt` and
   `.stt.wav` files for an annotation recording.
 - `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's

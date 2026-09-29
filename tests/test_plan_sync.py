@@ -49,15 +49,28 @@ def test_create_audio_plan_handles_source_in_output_dir(tmp_path):
     source.write_text("# Sample plan\n\nThis is a test sentence.", encoding="utf-8")
 
     class DummySpeechService:
+        synthesized_text = []
+
         def text_to_speech_file(self, text, output_path):
+            self.synthesized_text.append(text)
             with wave.open(output_path, "wb") as wav:
                 wav.setnchannels(1)
                 wav.setsampwidth(2)
                 wav.setframerate(8000)
                 wav.writeframes(b"\x00\x00" * 4)
 
-    result = create_audio_plan(str(source), DummySpeechService(), output_dir=str(plan_dir))
+    class DummyTextTransformer:
+        def transform_markdown_to_tts_text(self, markdown):
+            assert markdown == "# Sample plan\n\nThis is a test sentence."
+            return "A transformed, listenable sentence.\n"
+
+    speech = DummySpeechService()
+    result = create_audio_plan(
+        str(source), speech, DummyTextTransformer(), output_dir=str(plan_dir)
+    )
 
     assert result["package_dir"] == str(plan_dir)
     assert (plan_dir / "plan.wav").exists()
     assert (plan_dir / "plan.tts.txt").exists()
+    assert (plan_dir / "plan.tts.txt").read_text(encoding="utf-8") == "A transformed, listenable sentence.\n"
+    assert speech.synthesized_text == ["A transformed, listenable sentence."]

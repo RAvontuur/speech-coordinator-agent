@@ -10,25 +10,6 @@ from pathlib import Path
 from .path_utils import normalize_path
 
 
-def markdown_to_tts_text(markdown: str) -> str:
-    footnotes = {match.group(1): match.group(2).strip() for match in re.finditer(r"^\[\^([^\]]+)\]:\s*(.+)$", markdown, re.MULTILINE)}
-    text = re.sub(r"^\[\^[^\]]+\]:.*(?:\n|$)", "", markdown, flags=re.MULTILINE)
-    text = re.sub(r"```[^\n]*\n.*?```", "", text, flags=re.DOTALL)
-    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
-    text = re.sub(r"^\s*(?:[-*+\s]+|\d+[.)]\s+)", "", text, flags=re.MULTILINE)
-    text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"\[\^([^\]]+)\]", lambda match: f"Specifically, {footnotes.get(match.group(1), '')}", text)
-    text = re.sub(r"[*_`]+", "", text)
-    text = re.sub(r"^\s*(?:---+|\*\*\*+|___+)\s*$", "Moving on.", text, flags=re.MULTILINE)
-    text = re.sub(r"\n{2,}", "\n\n", text)
-    paragraphs = []
-    for paragraph in re.split(r"\n\s*\n", text):
-        paragraph = re.sub(r"\s+", " ", paragraph).strip()
-        if paragraph:
-            paragraphs.append(paragraph if paragraph[-1] in ".!?" else paragraph + ".")
-    return "\n\n".join(paragraphs) + ("\n" if paragraphs else "")
-
-
 def sentence_records(text: str, source_filename: str):
     records = []
     for index, match in enumerate(re.finditer(r".*?(?:[.!?](?=\s|$)|$)", text, re.DOTALL)):
@@ -64,9 +45,10 @@ def _append_wav(output, segment):
     return start_sample, output.getnframes(), params.framerate, params.nchannels
 
 
-def create_audio_plan(source_path, speech_service, output_dir=None):
+def create_audio_plan(source_path, speech_service, text_transformer, output_dir=None):
     source = normalize_path(source_path)
-    tts_text = markdown_to_tts_text(source.read_text(encoding="utf-8"))
+    source_markdown = source.read_text(encoding="utf-8")
+    tts_text = text_transformer.transform_markdown_to_tts_text(source_markdown)
     if not tts_text.strip():
         raise ValueError("file has no speakable text")
     plan_id = source.stem[:-7] if source.stem.endswith(".prompt") else source.stem
