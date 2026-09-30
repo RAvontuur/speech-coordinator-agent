@@ -56,10 +56,43 @@ def test_transform_uses_packaged_skill_instructions(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-test")
 
-    text = LLMService().transform_markdown_to_tts_text("# Heading\n\n- A list item")
+    text = LLMService().transform_file_to_tts_text(
+        "plan.md", "# Heading\n\n- A list item"
+    )
 
     assert text == "Listen to this sentence.\n"
     assert calls["model"] == "gpt-test"
     assert calls["input"] == "# Heading\n\n- A list item"
     assert "Transform markdown documents" in calls["instructions"] or "listenable text" in calls["instructions"].lower()
     assert "Return only the transformed text" in calls["instructions"]
+
+
+def test_python_file_uses_python_skill(monkeypatch):
+    calls = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            calls.update(kwargs)
+            return type("Response", (), {"output_text": "The function adds two numbers."})()
+
+    class FakeOpenAI:
+        def __init__(self, api_key):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(llm_service, "OpenAI", FakeOpenAI)
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    text = LLMService().transform_file_to_tts_text(
+        "example.py", "def add(left, right):\n    return left + right"
+    )
+
+    assert text == "The function adds two numbers.\n"
+    assert "Python-to-TTS transformation skill" in calls["instructions"]
+    assert "decorators" in calls["instructions"]
+
+
+def test_transform_rejects_unsupported_extension_before_openai_call(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    with pytest.raises(ValueError, match="unsupported file extension: .txt"):
+        LLMService().transform_file_to_tts_text("notes.txt", "Some content")

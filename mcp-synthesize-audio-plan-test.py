@@ -47,7 +47,7 @@ send({
     'jsonrpc': '2.0',
     'id': 2,
     'method': 'tools/call',
-    'params': {'name': 'synthesize_audio_plan', 'arguments': {'filename': 'README.md', 'output_dir': 'test'}}
+    'params': {'name': 'synthesize_audio_plan', 'arguments': {'filename': 'mcp-synthesize-audio-plan-test.py', 'output_dir': 'test/plan2'}}
 })
 resp = recv()
 print('CALL_RESP', json.dumps(resp, indent=2))

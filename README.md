@@ -59,9 +59,10 @@ The repository wrapper also starts the same server:
 
 - `run_speech_coordinator(message)` speaks a prompt, listens until the user
   says `submit`, and returns the collected transcript.
-- `synthesize_audio_plan(filename, output_dir)` transforms Markdown into
-  listenable text with the packaged markdown-to-TTS skill and an OpenAI model,
-  then creates the iOS-compatible plan package used by AudioAnnotation.
+- `synthesize_audio_plan(filename, output_dir)` supports `.md` and `.py` files.
+  Markdown uses the packaged markdown-to-TTS skill; Python source uses the
+  python-to-TTS skill to explain code behavior in listenable prose. An OpenAI
+  model transforms the source before the iOS-compatible plan is generated.
 - `transcribe_annotation(audio_path)` creates the adjacent `.stt.txt` and
   `.stt.wav` files for an annotation recording.
 - `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's

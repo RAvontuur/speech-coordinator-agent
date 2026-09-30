@@ -13,3 +13,4 @@ src/outdoor_speech_mcp.egg-info/entry_points.txt
 src/outdoor_speech_mcp.egg-info/requires.txt
 src/outdoor_speech_mcp.egg-info/top_level.txt
 src/outdoor_speech_mcp/skills/markdown-to-tts-text/SKILL.md
+src/outdoor_speech_mcp/skills/python-to-tts-text/SKILL.md

@@ -60,8 +60,9 @@ def test_create_audio_plan_handles_source_in_output_dir(tmp_path):
                 wav.writeframes(b"\x00\x00" * 4)
 
     class DummyTextTransformer:
-        def transform_markdown_to_tts_text(self, markdown):
-            assert markdown == "# Sample plan\n\nThis is a test sentence."
+        def transform_file_to_tts_text(self, filename, content):
+            assert Path(filename) == source
+            assert content == "# Sample plan\n\nThis is a test sentence."
             return "A transformed, listenable sentence.\n"
 
     speech = DummySpeechService()

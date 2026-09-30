@@ -47,8 +47,8 @@ def _append_wav(output, segment):
 
 def create_audio_plan(source_path, speech_service, text_transformer, output_dir=None):
     source = normalize_path(source_path)
-    source_markdown = source.read_text(encoding="utf-8")
-    tts_text = text_transformer.transform_markdown_to_tts_text(source_markdown)
+    source_content = source.read_text(encoding="utf-8")
+    tts_text = text_transformer.transform_file_to_tts_text(source, source_content)
     if not tts_text.strip():
         raise ValueError("file has no speakable text")
     plan_id = source.stem[:-7] if source.stem.endswith(".prompt") else source.stem

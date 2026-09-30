@@ -26,7 +26,7 @@ def run_speech_coordinator(message: str) -> str:
 
 @mcp.tool()
 def synthesize_audio_plan(filename: str, output_dir: str | None = None) -> dict:
-    """Convert a Markdown file into an iOS-compatible audio plan package."""
+    """Convert a Markdown or Python source file into an iOS-compatible audio plan."""
     source = Path(filename).expanduser()
     if not source.is_file():
         raise FileNotFoundError(f"file not found: {filename}")

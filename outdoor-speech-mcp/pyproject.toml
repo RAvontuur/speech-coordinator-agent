@@ -21,4 +21,7 @@ outdoor-speech-mcp = "outdoor_speech_mcp.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-outdoor_speech_mcp = ["skills/markdown-to-tts-text/SKILL.md"]
+outdoor_speech_mcp = [
+    "skills/markdown-to-tts-text/SKILL.md",
+    "skills/python-to-tts-text/SKILL.md",
+]
