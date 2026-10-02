@@ -89,6 +89,9 @@ def test_python_file_uses_python_skill(monkeypatch):
     assert text == "The function adds two numbers.\n"
     assert "Python-to-TTS transformation skill" in calls["instructions"]
     assert "decorators" in calls["instructions"]
+    assert "structure map" in calls["instructions"]
+    assert "Round-Trip Constraint" in calls["instructions"]
+    assert "name rebinding and shadowing" in calls["instructions"]
 
 
 def test_transform_rejects_unsupported_extension_before_openai_call(monkeypatch):
