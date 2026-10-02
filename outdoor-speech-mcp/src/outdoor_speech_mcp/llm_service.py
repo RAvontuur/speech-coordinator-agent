@@ -1,8 +1,11 @@
+import logging
 import os
 from importlib.resources import files
 from pathlib import Path
 
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 
 class LLMService:
@@ -26,10 +29,12 @@ class LLMService:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
 
+        logger.info("LLM request: %s", prompt)
         response = self._client().responses.create(
             model=self._model(model),
             input=prompt,
         )
+        logger.info("LLM response: %s", response.output_text)
         if not response.output_text:
             raise RuntimeError("The OpenAI model returned no text")
         return response.output_text

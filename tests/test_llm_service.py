@@ -4,7 +4,8 @@ from outdoor_speech_mcp import llm_service
 from outdoor_speech_mcp.llm_service import LLMService
 
 
-def test_ask_uses_configured_model_and_returns_response_text(monkeypatch):
+def test_ask_uses_configured_model_and_returns_response_text(monkeypatch, caplog):
+    caplog.set_level("INFO", logger=llm_service.__name__)
     calls = {}
 
     class FakeResponses:
@@ -25,6 +26,8 @@ def test_ask_uses_configured_model_and_returns_response_text(monkeypatch):
 
     assert answer == "Hello from the model."
     assert calls == {"api_key": "test-key", "model": "gpt-test", "input": "Say hello"}
+    assert "LLM request: Say hello" in caplog.text
+    assert "LLM response: Hello from the model." in caplog.text
 
 
 def test_ask_requires_api_key(monkeypatch):
