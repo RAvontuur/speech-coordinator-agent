@@ -25,9 +25,13 @@ AZURE_SPEECH_KEY=your_speech_key_here
 AZURE_SPEECH_REGION=your_region_here
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
+LOG_FILE=/path/to/outdoor-speech-mcp.log
 ACTIVE_AUDIO_PLAN=/path/to/audio-plan
 AUDIO_PLAN_INTERVAL_SECONDS=10
 ```
+
+Server logs are written to `~/.outdoor-speech-mcp.log` by default. Set
+`LOG_FILE` to choose a different path and `LOG_LEVEL` to adjust the verbosity.
 
 ## Configure an MCP client
 
