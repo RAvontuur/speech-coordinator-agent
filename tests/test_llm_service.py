@@ -130,8 +130,22 @@ def test_python_file_uses_python_skill(monkeypatch):
     assert "name rebinding and shadowing" in calls["instructions"]
 
 
-def test_transform_rejects_unsupported_extension_before_openai_call(monkeypatch):
+def test_transform_uses_markdown_skill_for_unsupported_extension(monkeypatch):
+    calls = {}
+
+    class FakeResponses:
+        def create(self, **kwargs):
+            calls.update(kwargs)
+            return type("Response", (), {"output_text": "Transformed text."})()
+
+    class FakeOpenAI:
+        def __init__(self, api_key):
+            self.responses = FakeResponses()
+
+    monkeypatch.setattr(llm_service, "OpenAI", FakeOpenAI)
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-    with pytest.raises(ValueError, match="unsupported file extension: .txt"):
-        LLMService().transform_file_to_tts_text("notes.txt", "Some content")
+    text = LLMService().transform_file_to_tts_text("notes.txt", "Some content")
+
+    assert text == "Transformed text.\n"
+    assert "Markdown-to-TTS" in calls["instructions"]

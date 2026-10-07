@@ -30,8 +30,10 @@ ACTIVE_AUDIO_PLAN=/path/to/audio-plan
 AUDIO_PLAN_INTERVAL_SECONDS=10
 ```
 
-Server logs are written to `~/.outdoor-speech-mcp.log` by default. Set
-`LOG_FILE` to choose a different path and `LOG_LEVEL` to adjust the verbosity.
+Server logs are written to `~/.outdoor-speech-mcp.log` by default, with a
+date/time stamp on each entry. The previous log is rotated at startup, keeping
+the ten most recent backups. Set `LOG_FILE` to choose a different path and
+`LOG_LEVEL` to adjust the verbosity.
 
 ## Configure an MCP client
 

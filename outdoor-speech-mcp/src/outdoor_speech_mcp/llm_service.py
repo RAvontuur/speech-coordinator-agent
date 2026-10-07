@@ -30,12 +30,12 @@ class LLMService:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
 
-        logger.info("LLM request: %s", prompt)
+        logger.debug("LLM request: %s", prompt)
         response = self._client().responses.create(
             model=self._model(model),
             input=prompt,
         )
-        logger.info("LLM response: %s", response.output_text)
+        logger.debug("LLM response: %s", response.output_text)
         if not response.output_text:
             raise RuntimeError("The OpenAI model returned no text")
         return response.output_text
@@ -52,13 +52,9 @@ class LLMService:
             raise ValueError("file content must not be empty")
 
         extension = Path(filename).suffix.lower()
-        try:
-            skill_name, format_name = self._TRANSFORM_SKILLS[extension]
-        except KeyError as error:
-            supported = ", ".join(sorted(self._TRANSFORM_SKILLS))
-            raise ValueError(
-                f"unsupported file extension: {extension or '(none)'}; supported extensions: {supported}"
-            ) from error
+        skill_name, format_name = self._TRANSFORM_SKILLS.get(
+            extension, self._TRANSFORM_SKILLS[".md"]
+        )
 
         skill_path = files("outdoor_speech_mcp").joinpath(
             "skills", skill_name, "SKILL.md"
@@ -79,7 +75,7 @@ class LLMService:
         source_data = json.dumps(
             {"filename": str(filename), "content": content}, ensure_ascii=False
         )
-        logger.info(
+        logger.debug(
             "LLM request: model=%s filename=%s instructions=%s input=%s",
             model_name,
             filename,
@@ -91,7 +87,7 @@ class LLMService:
             instructions=instructions,
             input=source_data,
         )
-        logger.info("LLM response: filename=%s output=%s", filename, response.output_text)
+        logger.debug("LLM response: filename=%s output=%s", filename, response.output_text)
         if not response.output_text or not response.output_text.strip():
             raise RuntimeError("The OpenAI model returned no transformed text")
         return response.output_text.strip() + "\n"
