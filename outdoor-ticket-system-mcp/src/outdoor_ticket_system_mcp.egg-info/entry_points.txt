@@ -1,0 +1,2 @@
+[console_scripts]
+outdoor-ticket-system-mcp = outdoor_ticket_system_mcp.server:main

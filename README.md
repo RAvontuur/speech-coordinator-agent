@@ -78,3 +78,23 @@ The repository wrapper also starts the same server:
 The speech implementation and its local dependencies live in
 `outdoor-speech-mcp/src/outdoor_speech_mcp`. Repository plan synchronization
 utilities remain at the project root.
+
+## Outdoor Ticket System MCP
+
+`outdoor-ticket-system-mcp` provides a local Markdown prompt queue for the
+Copilot agents in `.github/agents`. Install it into the workspace virtual
+environment:
+
+```bash
+cd outdoor-ticket-system-mcp
+../.venv/bin/python -m pip install -e .
+```
+
+VS Code discovers the server through `.vscode/mcp.json`. Add one `.md` file
+per coding prompt to `ticket-queue/`; the server claims prompts by oldest file
+modification time, with filename as the tie-breaker. Claimed prompts move into
+`ticket-queue/.processing/`. The dispatcher marks successful tasks complete
+into `.completed/`; interrupted tasks can be returned to the queue with
+`requeue_prompt`. Chat-log capture and posting are not implemented yet.
+
+The MCP tools are `claim_next_prompt`, `complete_prompt`, and `requeue_prompt`.

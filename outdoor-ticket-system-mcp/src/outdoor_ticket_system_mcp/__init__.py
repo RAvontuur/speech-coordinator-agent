@@ -1,0 +1,1 @@
+"""File-backed coding prompt queue for the outdoor ticket system."""

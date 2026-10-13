@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "outdoor-ticket-system-mcp": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.venv/bin/outdoor-ticket-system-mcp",
+      "env": {
+        "OUTDOOR_TICKET_QUEUE_DIR": "${workspaceFolder}/ticket-queue"
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: outdoor-ticket-system-mcp
+Version: 0.1.0
+Summary: File-backed coding prompt queue MCP server
+Requires-Python: >=3.10
+Requires-Dist: mcp<2,>=1.0.0
