@@ -1,10 +1,11 @@
-__pycache__/*
+__pycache__/
+*.pyc
+*.xcuserstate
 .venv/*
 .env
 .DS_Store
+.build/*
+.specstory/*
 tickets/*
 plans/*
 test/*
-ios/AudioAnnotation.xcodeproj/project.xcworkspace/xcuserdata/ravontuur.xcuserdatad/UserInterfaceState.xcuserstate
-outdoor-speech-mcp/src/outdoor_speech_mcp/__pycache__/*
-tests/__pycache__/*
