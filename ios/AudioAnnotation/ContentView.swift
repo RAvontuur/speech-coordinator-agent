@@ -167,27 +167,32 @@ struct ContentView: View {
     private func annotationThreadPanels(_ annotation: Annotation) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(annotation.audioFiles.enumerated()), id: \.offset) { index, recording in
-                Button {
-                    playRecording(recording, in: annotation)
-                } label: {
-                    HStack {
-                        Image(systemName: index == 0 ? "mic.circle" : "arrowshape.turn.up.left.circle")
-                        Text(index == 0 ? "Original annotation" : "Reply \(index)")
-                        Spacer()
-                        if let duration = recording.durationSeconds {
-                            Text(formatTime(duration))
-                                .foregroundStyle(.secondary)
+                HStack(alignment: .center, spacing: 8) {
+                    Button {
+                        playRecording(recording, in: annotation)
+                    } label: {
+                        HStack {
+                            Image(systemName: index == 0 ? "mic.circle" : "arrowshape.turn.up.left.circle")
+                            Text(index == 0 ? "Original annotation" : "Reply \(index)")
+                            Spacer()
+                            if let duration = recording.durationSeconds {
+                                Text(formatTime(duration))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
+                        .padding(.leading, 16)
                     }
-                    .padding(.leading, 16)
-                }
-                .buttonStyle(.bordered)
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                     Button(role: .destructive) {
                         removeRecording(recording, from: annotation)
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .controlSize(.small)
                 }
             }
 
