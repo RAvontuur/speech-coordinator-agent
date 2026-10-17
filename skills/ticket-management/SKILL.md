@@ -1,5 +1,5 @@
 ---
-name: "Local Ticket Management"
+name: "ticket-management"
 description: "Discover, validate, refine, and narrate repository-local tickets stored in per-ticket directories under tickets/."
 argument-hint: "Describe a ticket, a state transition, or the ticket schema you need to review."
 ---
