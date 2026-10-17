@@ -2,6 +2,7 @@ pyproject.toml
 src/outdoor_ticket_system_mcp/__init__.py
 src/outdoor_ticket_system_mcp/queue_store.py
 src/outdoor_ticket_system_mcp/server.py
+src/outdoor_ticket_system_mcp/ticket_store.py
 src/outdoor_ticket_system_mcp.egg-info/PKG-INFO
 src/outdoor_ticket_system_mcp.egg-info/SOURCES.txt
 src/outdoor_ticket_system_mcp.egg-info/dependency_links.txt
@@ -9,3 +10,4 @@ src/outdoor_ticket_system_mcp.egg-info/entry_points.txt
 src/outdoor_ticket_system_mcp.egg-info/requires.txt
 src/outdoor_ticket_system_mcp.egg-info/top_level.txt
 tests/test_queue_store.py
+tests/test_ticket_store.py

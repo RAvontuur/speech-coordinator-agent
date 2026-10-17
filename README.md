@@ -81,20 +81,34 @@ utilities remain at the project root.
 
 ## Outdoor Ticket System MCP
 
-`outdoor-ticket-system-mcp` provides a local Markdown prompt queue for the
-Copilot agents in `.github/agents`. Install it into the workspace virtual
-environment:
+`outdoor-ticket-system-mcp` manages repository-local tickets in `tickets/` and
+also provides a Markdown prompt queue for the Copilot agents in `.github/agents`.
+Install it into the workspace virtual environment:
 
 ```bash
 cd outdoor-ticket-system-mcp
 ../.venv/bin/python -m pip install -e .
 ```
 
-VS Code discovers the server through `.vscode/mcp.json`. Add one `.md` file
-per coding prompt to `ticket-queue/`; the server claims prompts by oldest file
-modification time, with filename as the tie-breaker. Claimed prompts move into
-`ticket-queue/.processing/`. The dispatcher marks successful tasks complete
-into `.completed/`; interrupted tasks can be returned to the queue with
-`requeue_prompt`. Chat-log capture and posting are not implemented yet.
+VS Code discovers both MCP servers through `.vscode/mcp.json`. Ticket records
+remain under `tickets/`; set `OUTDOOR_TICKET_ROOT` to override that location.
+The service requires the schema in `tickets/README.md` and never creates a
+parallel ticket store. Ticket mutations preserve append-only history and use
+the documented state graph. Transitions to `refined`, `ready`, or `closed`
+require `decision_evidence`; every transition requires `evidence`. MCP records
+caller-supplied evidence but cannot authenticate who supplied it.
 
-The MCP tools are `claim_next_prompt`, `complete_prompt`, and `requeue_prompt`.
+The ticket tools are `list_tickets`, `get_ticket`, `validate_tickets`,
+`create_ticket`, `update_ticket`, `transition_ticket`, and
+`prepare_ticket_plan`. The latter writes Markdown to a temporary source file
+and returns its path and included ticket IDs. Pass that file to
+`outdoor-speech-mcp.synthesize_audio_plan` to create the audio-plan artifacts.
+The speech MCP requires `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and
+`OPENAI_API_KEY` in the environment; `.vscode/mcp.json` references those
+environment variables rather than storing credentials.
+
+The separate prompt-queue tools remain `claim_next_prompt`, `complete_prompt`,
+and `requeue_prompt`. Add one `.md` file per coding prompt to `ticket-queue/`;
+the server claims prompts by oldest modification time, with filename as the
+tie-breaker. Claimed prompts move into `ticket-queue/.processing/` and are
+completed into `.completed/` or returned with `requeue_prompt`.
