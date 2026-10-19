@@ -69,6 +69,12 @@ The repository wrapper also starts the same server:
   Markdown uses the packaged markdown-to-TTS skill; Python source uses the
   python-to-TTS skill to explain code behavior in listenable prose. An OpenAI
   model transforms the source before the iOS-compatible plan is generated.
+- `latest_plan_name()` and `next_plan_name()` find existing and next local
+  `Sprint Review N` names. `create_next_plan_dir()` creates the next local plan
+  directory.
+- `import_plan(plan_name)` copies `ACTIVE_AUDIO_PLAN` into `plans/`;
+  `export_plan(plan_name)` deploys a local plan package to `ACTIVE_AUDIO_PLAN`.
+  These tools replace the removed repository-root `plan_sync.py` script.
 - `transcribe_annotation(audio_path)` creates the adjacent `.stt.txt` and
   `.stt.wav` files for an annotation recording.
 - `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's
@@ -76,13 +82,12 @@ The repository wrapper also starts the same server:
   `gpt-4o-mini`) and requires `OPENAI_API_KEY` in the MCP server environment.
 
 The speech implementation and its local dependencies live in
-`outdoor-speech-mcp/src/outdoor_speech_mcp`. Repository plan synchronization
-utilities remain at the project root.
+`outdoor-speech-mcp/src/outdoor_speech_mcp`, including the local Sprint Review
+plan synchronization helpers.
 
 ## Outdoor Ticket System MCP
 
-`outdoor-ticket-system-mcp` manages repository-local tickets in `tickets/` and
-also provides a Markdown prompt queue for the Copilot agents in `.github/agents`.
+`outdoor-ticket-system-mcp` manages repository-local tickets in `tickets/`.
 Install it into the workspace virtual environment:
 
 ```bash
@@ -99,16 +104,17 @@ require `decision_evidence`; every transition requires `evidence`. MCP records
 caller-supplied evidence but cannot authenticate who supplied it.
 
 The ticket tools are `list_tickets`, `get_ticket`, `validate_tickets`,
-`create_ticket`, `update_ticket`, `transition_ticket`, and
-`prepare_ticket_plan`. The latter writes Markdown to a temporary source file
-and returns its path and included ticket IDs. Pass that file to
-`outdoor-speech-mcp.synthesize_audio_plan` to create the audio-plan artifacts.
-The speech MCP requires `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and
-`OPENAI_API_KEY` in the environment; `.vscode/mcp.json` references those
-environment variables rather than storing credentials.
+`create_ticket`, `update_ticket`, and `transition_ticket`. Use
+`list_tickets(state="ready", output_mode="full")` to select implementation
+work. Its `file-format="markdown"` mode returns the Sprint Review Plan from
+all non-closed tickets by default. Save it as `plan.md` in a new local Sprint
+Review directory, then use `synthesize_audio_plan` and `export_plan` from
+`outdoor-speech-mcp` to generate and deploy the audio package.
 
-The separate prompt-queue tools remain `claim_next_prompt`, `complete_prompt`,
-and `requeue_prompt`. Add one `.md` file per coding prompt to `ticket-queue/`;
-the server claims prompts by oldest modification time, with filename as the
-tie-breaker. Claimed prompts move into `ticket-queue/.processing/` and are
-completed into `.completed/` or returned with `requeue_prompt`.
+The speech MCP owns plan synchronization through `next_plan_name`,
+`create_next_plan_dir`, `import_plan`, and `export_plan`. These tools replace
+the former `plan_sync.py` command-line helpers. Import/export use
+`ACTIVE_AUDIO_PLAN` and local `plans/` directories. The speech MCP requires
+`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY`;
+`.vscode/mcp.json` references environment variables rather than storing
+credentials.

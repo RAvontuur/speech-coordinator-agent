@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,7 @@ def _store(tmp_path: Path) -> TicketStore:
     (root / "README.md").write_text(
         "# Local Ticket System\n\n## Ticket Format\n\n## States\n", encoding="utf-8"
     )
-    return TicketStore(root, tmp_path / "plan-source")
+    return TicketStore(root)
 
 
 def _write_ticket(
@@ -133,6 +134,22 @@ def test_ids_only_mode_does_not_hide_invalid_ticket_records(tmp_path):
     assert listed[0]["errors"]
 
 
+def test_mcp_list_tickets_accepts_hyphenated_file_format(tmp_path, monkeypatch):
+    from outdoor_ticket_system_mcp import server
+
+    store = _store(tmp_path)
+    _write_ticket(store)
+    monkeypatch.setattr(server, "ticket_store", store)
+    tool = next(
+        tool for tool in server.mcp._tool_manager.list_tools() if tool.name == "list_tickets"
+    )
+
+    result = asyncio.run(tool.run({"file-format": "markdown"}))
+
+    assert result.startswith("# Sprint Review Plan")
+    assert "OC-001: Example ticket" in result
+
+
 def test_create_update_and_transition_append_history(tmp_path):
     store = _store(tmp_path)
     created = store.create_ticket(
@@ -197,14 +214,17 @@ def test_plan_includes_open_tickets_and_excludes_closed_tickets(tmp_path):
     _write_ticket(store, "review", "OC-002", "Review ticket")
     _write_ticket(store, "closed", "OC-003", "Closed ticket")
 
-    result = store.prepare_ticket_plan()
-    plan = Path(result["source_file"]).read_text(encoding="utf-8")
-    assert result["ticket_ids"] == ["OC-001", "OC-002"]
+    plan = store.list_tickets(file_format="markdown")
     assert "OC-001: Example ticket" in plan
     assert "OC-002: Review ticket" in plan
+    assert "Sprint Review Plan" in plan
     assert "State: review" in plan
     assert "Not applicable until implementation is complete." in plan
     assert "OC-003" not in plan
+
+    ready_plan = store.list_tickets(state="new", file_format="markdown")
+    assert "OC-001: Example ticket" in ready_plan
+    assert "OC-002" not in ready_plan
 
 
 def test_missing_schema_and_symlink_ticket_are_not_followed(tmp_path):

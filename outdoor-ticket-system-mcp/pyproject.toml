@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "outdoor-ticket-system-mcp"
 version = "0.1.0"
-description = "File-backed local ticket and coding prompt queue MCP server"
+description = "File-backed repository-local ticket management MCP server"
 requires-python = ">=3.10"
 dependencies = ["mcp>=1.0.0,<2", "PyYAML>=6.0"]
 

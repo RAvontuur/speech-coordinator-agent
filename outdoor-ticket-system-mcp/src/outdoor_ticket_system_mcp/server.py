@@ -1,46 +1,36 @@
-import logging
-from typing import Literal
+import inspect
+from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
-from .queue_store import queue_from_environment
 from .ticket_store import ticket_store_from_environment
 
 
-logging.basicConfig(level="INFO")
-logger = logging.getLogger(__name__)
 mcp = FastMCP("outdoor-ticket-system-mcp")
-queue = queue_from_environment()
 ticket_store = ticket_store_from_environment()
 
 
-@mcp.tool()
-def claim_next_prompt() -> dict | None:
-    """Atomically claim the oldest Markdown coding prompt in the queue."""
-    prompt = queue.claim_next()
-    logger.info("Claimed queued prompt: %s", prompt["filename"] if prompt else "none")
-    return prompt
-
-
-@mcp.tool()
-def complete_prompt(claim_id: str) -> dict:
-    """Move a successfully handled prompt out of processing and into completed."""
-    return queue.complete(claim_id)
-
-
-@mcp.tool()
-def requeue_prompt(claim_id: str) -> dict:
-    """Return an unprocessed or interrupted prompt to the pending queue."""
-    return queue.requeue(claim_id)
-
-
-@mcp.tool()
-def list_tickets(
+def _list_tickets_signature(
     state: str | None = None,
     output_mode: Literal["ids", "headers", "full"] = "headers",
-) -> list[str] | list[dict]:
-    """List tickets by state and return IDs, frontmatter headers, or full records."""
-    return ticket_store.list_tickets(state, output_mode)
+    file_format: Annotated[Literal["json", "markdown"], Field(alias="file-format")] = "json",
+) -> str | list[str] | list[dict]:
+    """List tickets as JSON projections or a Markdown Sprint Review Plan."""
+    return ticket_store.list_tickets(state, output_mode, file_format)
+
+
+def list_tickets(**kwargs: Any) -> str | list[str] | list[dict]:
+    """List tickets as JSON projections or a Markdown Sprint Review Plan."""
+    return ticket_store.list_tickets(
+        kwargs.get("state"),
+        kwargs.get("output_mode", "headers"),
+        kwargs.get("file-format", "json"),
+    )
+
+
+list_tickets.__signature__ = inspect.signature(_list_tickets_signature)
+mcp.tool()(list_tickets)
 
 
 @mcp.tool()
@@ -98,12 +88,6 @@ def transition_ticket(
 ) -> dict:
     """Transition a ticket and append evidence; selected states require decision evidence."""
     return ticket_store.transition_ticket(ticket_id, new_state, evidence, decision_evidence)
-
-
-@mcp.tool()
-def prepare_ticket_plan() -> dict:
-    """Write Markdown for every non-closed ticket for synthesis by outdoor-speech-mcp."""
-    return ticket_store.prepare_ticket_plan()
 
 
 def main() -> None:

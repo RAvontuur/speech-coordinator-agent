@@ -48,54 +48,99 @@ _HISTORY_PATTERN = re.compile(r"^- (\d{4}-\d{2}-\d{2}), `([^`]+)`: (.+)$")
 
 
 class TicketStore:
-    def __init__(self, ticket_root: str | Path, plan_source_dir: str | Path | None = None):
+    def __init__(self, ticket_root: str | Path):
         self.ticket_root = Path(ticket_root).expanduser().resolve()
-        self.plan_source_dir = (
-            Path(plan_source_dir).expanduser().resolve()
-            if plan_source_dir
-            else Path(tempfile.gettempdir()) / "outdoor-ticket-system-mcp"
-        )
         self._lock = threading.RLock()
 
     def list_tickets(
         self,
         state: str | None = None,
         output_mode: Literal["ids", "headers", "full"] = "headers",
-    ) -> list[str] | list[dict]:
+        file_format: Literal["json", "markdown"] = "json",
+    ) -> str | list[str] | list[dict]:
         self._require_schema()
         if state is not None and state not in STATES:
             raise ValueError(f"invalid state {state!r}; expected one of {', '.join(sorted(STATES))}")
         if output_mode not in {"ids", "headers", "full"}:
             raise ValueError("output_mode must be one of: ids, headers, full")
+        if file_format not in {"json", "markdown"}:
+            raise ValueError("file_format must be one of: json, markdown")
 
         tickets = []
         errors = []
         for directory in self._ticket_directories():
             path = self._ticket_markdown_file(directory)
             if path is None:
-                if state is None:
+                if state is None or file_format == "markdown":
                     errors.append(f"{directory}: {self._markdown_count_error(directory)}")
                     if output_mode != "ids":
-                        tickets.append({
-                            "path": str(directory),
-                            "errors": [self._markdown_count_error(directory)],
-                        })
+                        if file_format == "json":
+                            tickets.append({
+                                "path": str(directory),
+                                "errors": [self._markdown_count_error(directory)],
+                            })
                 continue
             ticket_errors, metadata, body = self._validate_file(path)
+            if ticket_errors:
+                if state is None or metadata.get("state") == state:
+                    errors.extend(ticket_errors)
+                if file_format == "json" and output_mode != "ids" and (
+                    state is None or metadata.get("state") == state
+                ):
+                    tickets.append({"path": str(path), "id": metadata.get("id"), "errors": ticket_errors})
+                continue
             if state is not None and metadata.get("state") != state:
                 continue
-            if ticket_errors:
-                errors.extend(ticket_errors)
-                if output_mode != "ids":
-                    tickets.append({"path": str(path), "id": metadata.get("id"), "errors": ticket_errors})
-            else:
-                ticket = {"path": str(path), **self._json_metadata(metadata)}
-                if output_mode == "ids":
-                    tickets.append(metadata["id"])
-                else:
-                    if output_mode == "full":
-                        ticket["body"] = body
-                    tickets.append(ticket)
+            ticket = {"path": str(path), **self._json_metadata(metadata), "body": body}
+            tickets.append(ticket)
+
+        if file_format == "markdown":
+            if errors:
+                raise ValueError("cannot generate ticket Markdown because records are invalid: " + "; ".join(errors))
+            if state is None:
+                tickets = [ticket for ticket in tickets if ticket["state"] != "closed"]
+            return self._render_ticket_plan(tickets, state)
+
+        if output_mode == "ids":
+            if errors:
+                raise ValueError("cannot list IDs because ticket records are invalid: " + "; ".join(errors))
+            return [ticket["id"] for ticket in tickets]
+        if output_mode == "headers":
+            return [{key: value for key, value in ticket.items() if key != "body"} for ticket in tickets]
+        return tickets
+
+    def _render_ticket_plan(self, tickets: list[dict], state: str | None) -> str:
+        lines = ["# Sprint Review Plan", ""]
+        if not tickets:
+            lines.append("There are no tickets matching the requested state." if state else "There are no open tickets.")
+        for ticket in tickets:
+            lines.extend([f"## {ticket['id']}: {ticket['title']}", ""])
+            sections = self._sections(ticket["body"])
+            if ticket["state"] == "review":
+                lines.extend([
+                    "State: review",
+                    "",
+                    "### Review Documentation",
+                    "",
+                    sections["Review Documentation"],
+                    "",
+                ])
+                continue
+            lines.extend([
+                f"State: {ticket['state']}",
+                "",
+                "Objective:",
+                sections["Objective"],
+                "",
+                "Dependencies: " + (", ".join(ticket["dependencies"]) or "None"),
+                "",
+                "Blockers:",
+                sections["Blockers and Questions"],
+                "",
+                "Next action: " + self._next_action(ticket["state"]),
+                "",
+            ])
+        return "\n".join(lines).rstrip() + "\n"
         if output_mode == "ids" and errors:
             raise ValueError("cannot list IDs because ticket records are invalid: " + "; ".join(errors))
         return tickets
@@ -271,51 +316,6 @@ class TicketStore:
                 raise ValueError("transition would make ticket invalid: " + "; ".join(errors))
             self._atomic_write(path, content)
         return {"id": metadata["id"], "from": old_state, "state": new_state, "path": str(path)}
-
-    def prepare_ticket_plan(self) -> dict:
-        self._require_schema()
-        tickets = []
-        for item in self.list_tickets():
-            if item.get("errors"):
-                raise ValueError(f"cannot prepare plan: {item['path']}: {'; '.join(item['errors'])}")
-            if item["state"] != "closed":
-                tickets.append(self.get_ticket(item["id"]))
-        tickets.sort(key=lambda ticket: ticket["id"])
-        lines = ["# Local Ticket Plan", ""]
-        if not tickets:
-            lines.append("There are no open tickets.")
-        for ticket in tickets:
-            lines.extend([f"## {ticket['id']}: {ticket['title']}", ""])
-            sections = self._sections(ticket["body"])
-            if ticket["state"] == "review":
-                lines.extend([
-                    "State: review",
-                    "",
-                    "### Review Documentation",
-                    "",
-                    sections["Review Documentation"],
-                    "",
-                ])
-                continue
-            lines.extend([
-                f"State: {ticket['state']}",
-                "",
-                "Objective:",
-                sections["Objective"],
-                "",
-                "Dependencies: " + (", ".join(ticket["dependencies"]) or "None"),
-                "",
-                "Blockers:",
-                sections["Blockers and Questions"],
-                "",
-                "Next action: " + self._next_action(ticket["state"]),
-                "",
-            ])
-        self.plan_source_dir.mkdir(parents=True, exist_ok=True)
-        path = self.plan_source_dir / "ticket-plan-source.md"
-        with self._lock:
-            self._atomic_write(path, "\n".join(lines).rstrip() + "\n")
-        return {"source_file": str(path), "ticket_ids": [ticket["id"] for ticket in tickets]}
 
     def _require_schema(self) -> None:
         readme = self.ticket_root / "README.md"
@@ -576,5 +576,4 @@ class TicketStore:
 def ticket_store_from_environment() -> TicketStore:
     workspace_root = Path(__file__).resolve().parents[3]
     ticket_root = os.getenv("OUTDOOR_TICKET_ROOT", str(workspace_root / "tickets"))
-    plan_source_dir = os.getenv("OUTDOOR_TICKET_PLAN_SOURCE_DIR")
-    return TicketStore(ticket_root, plan_source_dir)
+    return TicketStore(ticket_root)

@@ -13,13 +13,20 @@ repository root:
 ./.venv/bin/python manual-testing/mcp-ticket-system-test.py \
   --tool list_tickets --arguments '{"state":"ready","output_mode":"ids"}'
 ./.venv/bin/python manual-testing/mcp-ticket-system-test.py \
+  --tool list_tickets --arguments '{"file-format":"markdown"}'
+./.venv/bin/python manual-testing/mcp-ticket-system-test.py \
   --tool list_tickets --arguments '{"output_mode":"full"}'
 ./.venv/bin/python manual-testing/mcp-ticket-system-test.py \
   --tool get_ticket --arguments '{"ticket_id":"OC-005"}'
 ./.venv/bin/python manual-testing/mcp-ticket-system-test.py \
   --tool validate_tickets --arguments '{"ticket_id":"OC-005"}'
-./.venv/bin/python manual-testing/mcp-ticket-system-test.py --tool prepare_ticket_plan
 ```
+
+`list_tickets` accepts `state` to filter by ticket state, `output_mode` with
+`ids`, `headers`, or `full` for JSON responses, and `file-format` with `json`
+(default) or `markdown`. Markdown output is the Sprint Review Plan: without a
+state filter it contains every non-closed ticket; supplying `state` limits the
+plan to matching tickets.
 
 Use `--arguments` for any tool's JSON object. For example, `create_ticket`
 accepts fields such as `title`, `ticket_type`, `objective`,

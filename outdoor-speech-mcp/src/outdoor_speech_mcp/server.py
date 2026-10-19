@@ -8,6 +8,13 @@ from mcp.server.fastmcp import FastMCP
 from .audio_plan import create_audio_plan
 from .coordinator import Coordinator
 from .llm_service import LLMService
+from .plan_sync import (
+    create_next_plan_dir as make_next_plan_dir,
+    export_plan as copy_plan_to_active_audio,
+    import_plan as copy_active_audio_to_plan,
+    latest_plan_name as get_latest_plan_name,
+    next_plan_name as get_next_plan_name,
+)
 from .speech_service import SpeechService
 
 
@@ -66,6 +73,39 @@ def synthesize_audio_plan(filename: str, output_dir: str | None = None) -> dict:
     except Exception:
         logger.exception("Tool synthesize_audio_plan failed")
         raise
+
+
+@mcp.tool()
+def next_plan_name() -> str:
+    """Return the next local Sprint Review plan name."""
+    return get_next_plan_name()
+
+
+@mcp.tool()
+def latest_plan_name() -> str | None:
+    """Return the newest existing local Sprint Review plan name, or null if none exists."""
+    return get_latest_plan_name()
+
+
+@mcp.tool()
+def create_next_plan_dir() -> dict:
+    """Create and return the next numbered local Sprint Review directory."""
+    path = make_next_plan_dir()
+    return {"plan_name": path.name, "path": str(path)}
+
+
+@mcp.tool()
+def import_plan(plan_name: str) -> dict:
+    """Copy ACTIVE_AUDIO_PLAN into plans/<plan_name>, replacing that local directory."""
+    path = copy_active_audio_to_plan(plan_name)
+    return {"plan_name": path.name, "path": str(path)}
+
+
+@mcp.tool()
+def export_plan(plan_name: str) -> dict:
+    """Copy plans/<plan_name> to ACTIVE_AUDIO_PLAN, replacing the active package."""
+    path = copy_plan_to_active_audio(plan_name)
+    return {"plan_name": plan_name, "path": str(path)}
 
 
 @mcp.tool()

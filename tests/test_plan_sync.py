@@ -1,8 +1,16 @@
 import wave
 from pathlib import Path
 
+import pytest
+
 from outdoor_speech_mcp.audio_plan import create_audio_plan
-from plan_sync import create_next_plan_dir, export_plan, next_plan_name
+from outdoor_speech_mcp.plan_sync import (
+    create_next_plan_dir,
+    export_plan,
+    import_plan,
+    latest_plan_name,
+    next_plan_name,
+)
 
 
 def test_next_plan_name_increments_from_existing_dirs(tmp_path):
@@ -12,6 +20,17 @@ def test_next_plan_name_increments_from_existing_dirs(tmp_path):
     (plans_dir / "Sprint Review 2").mkdir()
 
     assert next_plan_name(plans_dir) == "Sprint Review 3"
+
+
+def test_latest_plan_name_returns_highest_existing_number(tmp_path):
+    plans_dir = tmp_path / "plans"
+    plans_dir.mkdir()
+    (plans_dir / "Sprint Review 2").mkdir()
+    (plans_dir / "Sprint Review 11").mkdir()
+    (plans_dir / "Sprint Review notes").mkdir()
+
+    assert latest_plan_name(plans_dir) == "Sprint Review 11"
+    assert latest_plan_name(tmp_path / "empty") is None
 
 
 def test_create_next_plan_dir_creates_the_next_numbered_directory(tmp_path):
@@ -40,6 +59,50 @@ def test_export_plan_copies_local_dir_to_active_audio_plan(tmp_path, monkeypatch
     assert exported == destination
     assert destination.exists()
     assert (destination / "plan.tts.txt").read_text(encoding="utf-8") == "example"
+
+
+def test_import_plan_copies_active_audio_plan_to_local_dir(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repository"
+    source = tmp_path / "active-plan"
+    source.mkdir()
+    (source / "annotations.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ACTIVE_AUDIO_PLAN", str(source))
+
+    imported = import_plan("Sprint Review 4", repo_root=repo_root)
+
+    assert imported == repo_root / "plans" / "Sprint Review 4"
+    assert (imported / "annotations.json").read_text(encoding="utf-8") == "{}"
+
+
+def test_plan_name_rejects_path_traversal(tmp_path):
+    from outdoor_speech_mcp.plan_sync import export_plan
+
+    with pytest.raises(ValueError, match="Sprint Review N"):
+        export_plan("../outside", repo_root=tmp_path)
+
+
+def test_export_rejects_destination_that_contains_local_plans(tmp_path, monkeypatch):
+    source = tmp_path / "plans" / "Sprint Review 1"
+    source.mkdir(parents=True)
+    (source / "plan.md").write_text("keep this source", encoding="utf-8")
+    monkeypatch.setenv("ACTIVE_AUDIO_PLAN", str(tmp_path / "plans"))
+
+    with pytest.raises(ValueError, match="must not overlap"):
+        export_plan("Sprint Review 1", repo_root=tmp_path)
+
+    assert (source / "plan.md").read_text(encoding="utf-8") == "keep this source"
+
+
+def test_import_rejects_destination_inside_active_plan(tmp_path, monkeypatch):
+    source = tmp_path / "active-plan"
+    source.mkdir()
+    (source / "annotations.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ACTIVE_AUDIO_PLAN", str(source))
+
+    with pytest.raises(ValueError, match="must not overlap"):
+        import_plan("Sprint Review 1", repo_root=source)
+
+    assert (source / "annotations.json").read_text(encoding="utf-8") == "{}"
 
 
 def test_create_audio_plan_handles_source_in_output_dir(tmp_path):
