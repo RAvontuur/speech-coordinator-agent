@@ -65,6 +65,8 @@ struct ContentView: View {
                     .padding()
                     .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
 
+                sourceLocationPanel(manifest)
+
                 VStack(spacing: 8) {
                     Slider(value: Binding(
                         get: { audioPlayer.currentTime },
@@ -307,6 +309,72 @@ struct ContentView: View {
 
     private func currentSentence(in manifest: TimingManifest) -> Sentence? {
         manifest.sentences.first { audioPlayer.currentTime >= $0.startSeconds && audioPlayer.currentTime < $0.endSeconds }
+    }
+
+    private func sourceLocationPanel(_ manifest: TimingManifest) -> some View {
+        let sources = sourceLocations(in: manifest)
+        let currentIndex = currentSourceLocationIndex(in: manifest)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Source location")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .center, spacing: 10) {
+                Button {
+                    navigateSourceLocation(by: -1, in: manifest)
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Previous source location")
+                .disabled(currentIndex.map { $0 == 0 } ?? true)
+
+                Text(currentSentence(in: manifest)?.sourceFilename ?? "No source location")
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    navigateSourceLocation(by: 1, in: manifest)
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .accessibilityLabel("Next source location")
+                .disabled(currentIndex.map { $0 >= sources.count - 1 } ?? true)
+            }
+        }
+        .padding(12)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func sourceLocations(in manifest: TimingManifest) -> [String] {
+        var seen = Set<String>()
+        return manifest.sentences.compactMap { sentence in
+            guard let source = sentence.sourceFilename, seen.insert(source).inserted else {
+                return nil
+            }
+            return source
+        }
+    }
+
+    private func currentSourceLocationIndex(in manifest: TimingManifest) -> Int? {
+        guard let source = currentSentence(in: manifest)?.sourceFilename else { return nil }
+        return sourceLocations(in: manifest).firstIndex(of: source)
+    }
+
+    private func navigateSourceLocation(by offset: Int, in manifest: TimingManifest) {
+        let sources = sourceLocations(in: manifest)
+        guard let currentIndex = currentSourceLocationIndex(in: manifest) else { return }
+        let targetIndex = currentIndex + offset
+        guard sources.indices.contains(targetIndex),
+              let targetSentence = manifest.sentences.first(where: {
+                  $0.sourceFilename == sources[targetIndex]
+              }) else {
+            return
+        }
+        annotationPlayback.stop()
+        audioPlayer.seek(to: targetSentence.startSeconds)
     }
 
     private func playAnnotationThread(_ annotation: Annotation) {

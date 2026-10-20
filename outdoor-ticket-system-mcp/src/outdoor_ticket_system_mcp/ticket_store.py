@@ -114,7 +114,11 @@ class TicketStore:
         if not tickets:
             lines.append("There are no tickets matching the requested state." if state else "There are no open tickets.")
         for ticket in tickets:
-            lines.extend([f"## {ticket['id']}: {ticket['title']}", ""])
+            lines.extend([
+                f"<a id=\"{ticket['id'].lower()}\"></a>",
+                f"## {ticket['id']}: {ticket['title']}",
+                "",
+            ])
             sections = self._sections(ticket["body"])
             if ticket["state"] == "review":
                 lines.extend([

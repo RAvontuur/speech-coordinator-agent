@@ -69,6 +69,9 @@ The repository wrapper also starts the same server:
   Markdown uses the packaged markdown-to-TTS skill; Python source uses the
   python-to-TTS skill to explain code behavior in listenable prose. An OpenAI
   model transforms the source before the iOS-compatible plan is generated.
+  Each timing sentence's `source_filename` is a Git file URL; explicit Markdown
+  anchors are retained as URL fragments so annotations can be traced to a
+  ticket.
 - `latest_plan_name()` and `next_plan_name()` find existing and next local
   `Sprint Review N` names. `create_next_plan_dir()` creates the next local plan
   directory.

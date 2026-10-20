@@ -216,7 +216,9 @@ def test_plan_includes_open_tickets_and_excludes_closed_tickets(tmp_path):
 
     plan = store.list_tickets(file_format="markdown")
     assert "OC-001: Example ticket" in plan
+    assert '<a id="oc-001"></a>' in plan
     assert "OC-002: Review ticket" in plan
+    assert '<a id="oc-002"></a>' in plan
     assert "Sprint Review Plan" in plan
     assert "State: review" in plan
     assert "Not applicable until implementation is complete." in plan

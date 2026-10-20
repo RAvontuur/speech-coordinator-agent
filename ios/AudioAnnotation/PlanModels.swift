@@ -20,6 +20,7 @@ struct Sentence: Codable, Identifiable {
     let text: String
     let startSeconds: Double
     let endSeconds: Double
+    let sourceFilename: String?
 
     var id: String { sentenceID }
 
@@ -29,6 +30,7 @@ struct Sentence: Codable, Identifiable {
         case text
         case startSeconds = "start_seconds"
         case endSeconds = "end_seconds"
+        case sourceFilename = "source_filename"
     }
 }
 

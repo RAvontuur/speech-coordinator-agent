@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from outdoor_speech_mcp.audio_plan import create_audio_plan
+from outdoor_speech_mcp.audio_plan import create_audio_plan, git_source_url, markdown_anchor_segments
 from outdoor_speech_mcp.plan_sync import (
     create_next_plan_dir,
     export_plan,
@@ -138,10 +138,93 @@ def test_create_audio_plan_handles_source_in_output_dir(tmp_path):
     assert (plan_dir / "plan.wav").exists()
     assert (plan_dir / "plan.tts.txt").exists()
     assert (plan_dir / "plan.tts.txt").read_text(encoding="utf-8") == (
-        f"source file : {source}\n\nA transformed, listenable sentence.\n"
+        "A transformed, listenable sentence.\n"
     )
     assert speech.synthesized_text == [
-        f"source file : {source}\n\nA transformed, listenable sentence."
+        "A transformed, listenable sentence."
+    ]
+
+
+def test_markdown_anchor_segments_preserve_ticket_boundaries():
+    content = (
+        "Annotation summary.\n\n"
+        '<a id="oc-005"></a>\n## OC-005: Delete control\nVisible control.\n\n'
+        '<a id="oc-006"></a>\n## OC-006: Background audio\nKeep playing.\n'
+    )
+
+    assert markdown_anchor_segments(content) == [
+        (None, "Annotation summary.\n\n"),
+        ("oc-005", "\n## OC-005: Delete control\nVisible control.\n\n"),
+        ("oc-006", "\n## OC-006: Background audio\nKeep playing.\n"),
+    ]
+
+
+def test_git_source_url_uses_repo_path_and_bookmark(tmp_path):
+    repository = tmp_path / "speech-coordinator-agent"
+    source = repository / "plans" / "Sprint Review 3" / "plan.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("source", encoding="utf-8")
+    import subprocess
+
+    subprocess.run(["git", "init", "--initial-branch=main", str(repository)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "remote", "add", "origin", "git@github.com:Acme/speech-coordinator-agent.git"],
+        check=True,
+    )
+
+    assert git_source_url(source, "oc-005") == (
+        "https://github.com/Acme/speech-coordinator-agent/blob/main/"
+        "plans/Sprint%20Review%203/plan.md#oc-005"
+    )
+
+
+def test_create_audio_plan_maps_ticket_anchors_to_sentence_sources(tmp_path):
+    repository = tmp_path / "speech-coordinator-agent"
+    plan_dir = repository / "plans" / "Sprint Review 3"
+    plan_dir.mkdir(parents=True)
+    source = plan_dir / "plan.md"
+    source.write_text(
+        "Annotation summary.\n\n"
+        '<a id="oc-005"></a>\n## OC-005: Delete control\nTicket five details.\n\n'
+        '<a id="oc-006"></a>\n## OC-006: Background audio\nTicket six details.\n',
+        encoding="utf-8",
+    )
+    import subprocess
+
+    subprocess.run(["git", "init", "--initial-branch=main", str(repository)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(repository), "remote", "add", "origin", "https://github.com/Acme/speech-coordinator-agent.git"],
+        check=True,
+    )
+
+    class DummySpeechService:
+        def text_to_speech_file(self, text, output_path):
+            with wave.open(output_path, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(8000)
+                wav.writeframes(b"\x00\x00" * 4)
+
+    class DummyTextTransformer:
+        def transform_file_to_tts_text(self, filename, content):
+            if "Annotation summary" in content:
+                return "Annotation summary spoken."
+            if "OC-005" in content:
+                return "Ticket five spoken."
+            return "Ticket six spoken."
+
+    result = create_audio_plan(
+        str(source), DummySpeechService(), DummyTextTransformer(), output_dir=str(plan_dir)
+    )
+
+    manifest = result["manifest"]
+    assert [sentence["source_filename"] for sentence in manifest["sentences"]] == [
+        "https://github.com/Acme/speech-coordinator-agent/blob/main/"
+        "plans/Sprint%20Review%203/plan.md",
+        "https://github.com/Acme/speech-coordinator-agent/blob/main/"
+        "plans/Sprint%20Review%203/plan.md#oc-005",
+        "https://github.com/Acme/speech-coordinator-agent/blob/main/"
+        "plans/Sprint%20Review%203/plan.md#oc-006",
     ]
 
 
@@ -183,11 +266,12 @@ def test_create_audio_plan_transforms_directory_and_skips_ignored_files(tmp_path
     first = source_dir / "nested" / "first.md"
     second = source_dir / "second.txt"
     assert [file for file, _ in transformer.files] == [first, second]
-    expected = (
-        f"source file : {first}\n\nTransformed First content\n\n\n"
-        f"source file : {second}\n\nTransformed Second content\n"
-    )
+    expected = "Transformed First content\n\n\nTransformed Second content\n"
     assert Path(result["text_file"]).read_text(encoding="utf-8") == expected
+    assert [sentence["source_filename"] for sentence in result["manifest"]["sentences"]] == [
+        f"git://repository/{first.relative_to(repository).as_posix()}",
+        f"git://repository/{second.relative_to(repository).as_posix()}",
+    ]
 
 
 def test_create_audio_plan_includes_message_for_empty_file(tmp_path):
@@ -211,7 +295,7 @@ def test_create_audio_plan_includes_message_for_empty_file(tmp_path):
 
     speech = DummySpeechService()
     result = create_audio_plan(str(source), speech, DummyTextTransformer())
-    expected = f"source file : {source.resolve()}\n\nThis file is empty."
+    expected = "This file is empty."
 
     assert Path(result["text_file"]).read_text(encoding="utf-8") == expected + "\n"
     assert speech.synthesized_text == [expected]
