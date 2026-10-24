@@ -185,6 +185,35 @@ def test_create_update_and_transition_append_history(tmp_path):
         store.update_ticket("OC-001", {"History": "rewritten"})
 
 
+def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_close(tmp_path):
+    store = _store(tmp_path)
+    ticket = store.create_ticket(
+        title="Add annotation state transitions",
+        ticket_type="feature",
+        objective="Allow explicit annotation-driven transitions.",
+        acceptance_criteria=["Users can move tickets to ready or closed via annotation intent."],
+        validation_approach="Run the focused ticket transition tests.",
+        affected_area=["tickets/"],
+        creation_evidence="Requested by users during annotation review.",
+    )
+    assert ticket["id"] == "OC-001"
+
+    store.transition_ticket(
+        "OC-001",
+        "ready",
+        "Annotation requested state change to ready.",
+        "User explicitly approved the ready state.",
+    )
+    updated = store.get_ticket("OC-001")
+    assert updated["state"] == "ready"
+    assert "Annotation requested state change to ready." in updated["body"]
+    assert "User explicitly approved the ready state." in updated["body"]
+    assert "Created through the ticket MCP" in updated["body"]
+
+    with pytest.raises(ValueError, match="not allowed"):
+        store.transition_ticket("OC-001", "closed", "Close as requested.", "User requested closure.")
+
+
 def test_ready_transition_requires_concrete_fields(tmp_path):
     store = _store(tmp_path)
     path = _write_ticket(store)

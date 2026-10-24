@@ -16,8 +16,9 @@ uses the schema in `tickets/README.md`; do not create a separate ticket store.
     the existing record before changing it.
 2. Use `create_ticket` for new work, `update_ticket` for metadata or body
     sections, and `transition_ticket` for state changes. Preserve the user's
-    intent and provide accurate evidence; decision evidence is required when
-    moving to `refined`, `ready`, or `closed`.
+    explicit annotation instructions, keep the append-only `History`, and
+    provide accurate evidence; decision evidence is required when moving to
+    `refined`, `ready`, or `closed`.
 3. Use `list_tickets` to review the current set. Only `ready` tickets are
     eligible for implementation. Do not treat test success alone as acceptance
     or close a ticket without explicit user decision evidence.

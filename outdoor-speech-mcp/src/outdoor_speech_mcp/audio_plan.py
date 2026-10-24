@@ -173,8 +173,7 @@ def _ignored_paths(paths, git_root):
 
 def _source_files(source):
     if source.is_file():
-        ignored = _ignored_paths([source], _git_root(source))
-        candidates = [] if source in ignored else [source]
+        candidates = [source]
     elif source.is_dir():
         candidates = []
         git_root = _git_root(source)
@@ -191,8 +190,23 @@ def _source_files(source):
     return sorted(candidates, key=lambda path: path.as_posix().lower())
 
 
-def create_audio_plan(source_path, speech_service, text_transformer, output_dir=None):
+def _resolve_source_path(source_path, output_dir=None):
     source = normalize_path(source_path)
+    if output_dir is None:
+        return source
+
+    target_dir = normalize_path(output_dir)
+    if not target_dir.exists() or not target_dir.is_dir():
+        return source
+
+    candidate = target_dir / source.name
+    if source.name and candidate.exists() and not source.is_relative_to(target_dir):
+        return candidate
+    return source
+
+
+def create_audio_plan(source_path, speech_service, text_transformer, output_dir=None):
+    source = _resolve_source_path(source_path, output_dir)
     source_files = _source_files(source)
     if not source_files:
         raise ValueError("source contains no files after applying .gitignore rules")

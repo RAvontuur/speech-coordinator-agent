@@ -1,5 +1,6 @@
 pyproject.toml
 src/outdoor_speech_mcp/__init__.py
+src/outdoor_speech_mcp/annotation_processing.py
 src/outdoor_speech_mcp/audio_plan.py
 src/outdoor_speech_mcp/coordinator.py
 src/outdoor_speech_mcp/llm_service.py

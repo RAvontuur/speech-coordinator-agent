@@ -7,7 +7,7 @@
         "OUTDOOR_TICKET_ROOT": "${workspaceFolder}/tickets"
       }
     },
-    "outdoor-speech": {
+    "outdoor-speech-mcp": {
       "type": "stdio",
       "command": "${workspaceFolder}/.venv/bin/outdoor-speech-mcp",
       "env": {

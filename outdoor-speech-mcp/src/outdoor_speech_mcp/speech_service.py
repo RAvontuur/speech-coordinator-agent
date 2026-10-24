@@ -9,6 +9,15 @@ from dotenv import load_dotenv
 
 from .path_utils import normalize_path
 
+for variable in (
+    "AZURE_SPEECH_KEY",
+    "AZURE_SPEECH_REGION",
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+):
+    if not os.getenv(variable):
+        os.environ.pop(variable, None)
+
 load_dotenv()
 
 import azure.cognitiveservices.speech as speechsdk

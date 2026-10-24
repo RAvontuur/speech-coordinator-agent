@@ -145,6 +145,41 @@ def test_create_audio_plan_handles_source_in_output_dir(tmp_path):
     ]
 
 
+def test_create_audio_plan_prefers_plan_file_in_output_dir_when_source_is_bare_name(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    plan_dir = repo_root / "plans" / "Sprint Review 6"
+    plan_dir.mkdir(parents=True)
+    expected_source = plan_dir / "plan.md"
+    expected_source.write_text("# Correct plan\n\nUse this file.", encoding="utf-8")
+    wrong_source = repo_root / "plan.md"
+    wrong_source.write_text("# Wrong plan\n\nDo not use this file.", encoding="utf-8")
+    monkeypatch.chdir(repo_root)
+
+    class DummySpeechService:
+        def text_to_speech_file(self, text, output_path):
+            with wave.open(output_path, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(8000)
+                wav.writeframes(b"\x00\x00" * 4)
+
+    class DummyTextTransformer:
+        def transform_file_to_tts_text(self, filename, content):
+            assert Path(filename) == expected_source
+            return "Selected correct source.\n"
+
+    result = create_audio_plan(
+        "plan.md",
+        DummySpeechService(),
+        DummyTextTransformer(),
+        output_dir=str(plan_dir),
+    )
+
+    assert Path(result["source_file"]) == expected_source
+    assert Path(result["text_file"]).read_text(encoding="utf-8") == "Selected correct source.\n"
+
+
 def test_markdown_anchor_segments_preserve_ticket_boundaries():
     content = (
         "Annotation summary.\n\n"
@@ -272,6 +307,33 @@ def test_create_audio_plan_transforms_directory_and_skips_ignored_files(tmp_path
         f"git://repository/{first.relative_to(repository).as_posix()}",
         f"git://repository/{second.relative_to(repository).as_posix()}",
     ]
+
+
+def test_create_audio_plan_processes_explicitly_selected_ignored_file(tmp_path):
+    repository = tmp_path / "repository"
+    source = repository / "plans" / "Sprint Review 3" / "plan.md"
+    source.parent.mkdir(parents=True)
+    source.write_text("Sprint review content.", encoding="utf-8")
+    (repository / ".gitignore").write_text("plans/*\n", encoding="utf-8")
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+
+    class DummySpeechService:
+        def text_to_speech_file(self, text, output_path):
+            with wave.open(output_path, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(8000)
+                wav.writeframes(b"\x00\x00" * 4)
+
+    class DummyTextTransformer:
+        def transform_file_to_tts_text(self, filename, content):
+            return f"Transformed {content}"
+
+    result = create_audio_plan(str(source), DummySpeechService(), DummyTextTransformer())
+
+    assert Path(result["text_file"]).read_text(encoding="utf-8") == "Transformed Sprint review content.\n"
 
 
 def test_create_audio_plan_includes_message_for_empty_file(tmp_path):

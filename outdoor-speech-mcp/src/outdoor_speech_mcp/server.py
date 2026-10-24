@@ -5,6 +5,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from .annotation_processing import process_plan_annotations as process_annotations
 from .audio_plan import create_audio_plan
 from .coordinator import Coordinator
 from .llm_service import LLMService
@@ -123,6 +124,19 @@ def transcribe_annotation(audio_path: str) -> dict:
         return response
     except Exception:
         logger.exception("Tool transcribe_annotation failed")
+        raise
+
+
+@mcp.tool()
+def process_plan_annotations(plan_path: str) -> list[dict]:
+    """Transcribe plan annotation recordings and return their sentence and source-file context."""
+    logger.info("Tool request process_plan_annotations: %r", {"plan_path": plan_path})
+    try:
+        response = process_annotations(plan_path, speech)
+        logger.info("Tool response process_plan_annotations: %r", response)
+        return response
+    except Exception:
+        logger.exception("Tool process_plan_annotations failed")
         raise
 
 
