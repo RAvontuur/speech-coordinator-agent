@@ -207,9 +207,9 @@ def test_git_source_url_uses_repo_path_and_bookmark(tmp_path):
         check=True,
     )
 
-    assert git_source_url(source, "oc-005") == (
+    assert git_source_url(source, "p7-t1") == (
         "https://github.com/Acme/speech-coordinator-agent/blob/main/"
-        "plans/Sprint%20Review%203/plan.md#oc-005"
+        "plans/Sprint%20Review%203/plan.md#p7-t1"
     )
 
 

@@ -5,6 +5,7 @@ import threading
 from datetime import date
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote
 
 import yaml
 
@@ -43,7 +44,7 @@ TRANSITIONS = {
     "closed": set(),
 }
 DECISION_STATES = {"refined", "ready", "closed"}
-_ID_PATTERN = re.compile(r"^OC-(\d{3,})$")
+_ID_PATTERN = re.compile(r"^(?:OC-\d{3,}|P[1-9]\d*-T[1-9]\d*)$")
 _HISTORY_PATTERN = re.compile(r"^- (\d{4}-\d{2}-\d{2}), `([^`]+)`: (.+)$")
 
 
@@ -91,7 +92,7 @@ class TicketStore:
                 continue
             if state is not None and metadata.get("state") != state:
                 continue
-            ticket = {"path": str(path), **self._json_metadata(metadata), "body": body}
+            ticket = self._ticket_projection(path, metadata, body)
             tickets.append(ticket)
 
         if file_format == "markdown":
@@ -115,7 +116,7 @@ class TicketStore:
             lines.append("There are no tickets matching the requested state." if state else "There are no open tickets.")
         for ticket in tickets:
             lines.extend([
-                f"<a id=\"{ticket['id'].lower()}\"></a>",
+                f"<a id=\"{self._bookmark(ticket['id'])}\"></a>",
                 f"## {ticket['id']}: {ticket['title']}",
                 "",
             ])
@@ -154,7 +155,7 @@ class TicketStore:
         errors, metadata, body = self._validate_file(path)
         if errors:
             raise ValueError("; ".join(errors))
-        return {"path": str(path), **self._json_metadata(metadata), "body": body}
+        return self._ticket_projection(path, metadata, body)
 
     def validate_tickets(self, ticket_id: str | None = None) -> dict:
         self._require_schema()
@@ -191,6 +192,7 @@ class TicketStore:
         validation_approach: str,
         affected_area: list[str],
         creation_evidence: str,
+        plan_number: int,
         priority: str = "normal",
         dependencies: list[str] | None = None,
         related: list[str] | None = None,
@@ -204,10 +206,13 @@ class TicketStore:
         affected_area = self._string_list(affected_area, "affected_area")
         acceptance_criteria = self._string_list(acceptance_criteria, "acceptance_criteria")
         priority = self._required_text(priority, "priority")
+        if isinstance(plan_number, bool) or not isinstance(plan_number, int) or plan_number < 1:
+            raise ValueError("plan_number must be a positive integer")
 
         with self._lock:
-            sequence = self._next_sequence()
-            ticket_id = f"OC-{sequence:03d}"
+            order_number = self._next_order_number(plan_number)
+            ticket_id = f"P{plan_number}-T{order_number}"
+            bookmark = self._bookmark(ticket_id)
             slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "ticket"
             directory_name = f"{ticket_id}-{slug}"
             directory = self.ticket_root / directory_name
@@ -216,6 +221,8 @@ class TicketStore:
             today = date.today().isoformat()
             metadata = {
                 "id": ticket_id,
+                "plan_number": plan_number,
+                "order_number": order_number,
                 "title": title,
                 "state": "new",
                 "type": ticket_type,
@@ -235,7 +242,7 @@ class TicketStore:
                 "History": f"- {today}, `new`: Created through the ticket MCP. {self._single_line(creation_evidence)}",
                 "Blockers and Questions": "None",
             }
-            content = self._serialize(metadata, self._render_sections(title, sections))
+            content = self._serialize(metadata, self._render_sections(title, sections, bookmark))
             errors, _, _ = self._validate_content(content, directory, directory / f"{directory_name}.md")
             if errors:
                 raise ValueError("ticket would be invalid: " + "; ".join(errors))
@@ -247,7 +254,13 @@ class TicketStore:
                 path.unlink(missing_ok=True)
                 directory.rmdir()
                 raise
-        return {"id": ticket_id, "path": str(path), "state": "new"}
+        return {
+            "id": ticket_id,
+            "path": str(path),
+            "state": "new",
+            "bookmark": bookmark,
+            "get_url": self._get_url(path, bookmark),
+        }
 
     def update_ticket(self, ticket_id: str, updates: dict) -> dict:
         if not isinstance(updates, dict) or not updates:
@@ -333,9 +346,18 @@ class TicketStore:
                 raise ValueError(f"{readme} is not a recognized ticket schema; missing {heading}")
 
     def _ticket_directories(self) -> list[Path]:
+        def ticket_order(path: Path) -> tuple:
+            plan_ticket = re.match(r"^P(\d+)-T(\d+)-", path.name)
+            if plan_ticket:
+                return (0, int(plan_ticket.group(1)), int(plan_ticket.group(2)), path.name.lower())
+            legacy_ticket = re.match(r"^OC-(\d+)-", path.name)
+            if legacy_ticket:
+                return (1, int(legacy_ticket.group(1)), path.name.lower())
+            return (2, path.name.lower())
+
         return sorted(
             (path for path in self.ticket_root.iterdir() if path.is_dir() and not path.is_symlink()),
-            key=lambda path: path.name.lower(),
+            key=ticket_order,
         )
 
     @staticmethod
@@ -401,9 +423,24 @@ class TicketStore:
         errors.extend(f"{path}: missing frontmatter field {key!r}" for key in sorted(missing))
         ticket_id = metadata.get("id")
         if not isinstance(ticket_id, str) or not _ID_PATTERN.fullmatch(ticket_id or ""):
-            errors.append(f"{path}: id must use the format OC-###")
+            errors.append(f"{path}: id must use OC-### or P<plan>-T<order> format")
         elif not directory.name.startswith(ticket_id + "-"):
             errors.append(f"{path}: directory name must begin with {ticket_id}-")
+        if "plan_number" in metadata or "order_number" in metadata:
+            plan_number = metadata.get("plan_number")
+            order_number = metadata.get("order_number")
+            if isinstance(plan_number, bool) or not isinstance(plan_number, int) or plan_number < 1:
+                errors.append(f"{path}: plan_number must be a positive integer")
+            if isinstance(order_number, bool) or not isinstance(order_number, int) or order_number < 1:
+                errors.append(f"{path}: order_number must be a positive integer")
+            if (
+                isinstance(plan_number, int)
+                and not isinstance(plan_number, bool)
+                and isinstance(order_number, int)
+                and not isinstance(order_number, bool)
+                and ticket_id != f"P{plan_number}-T{order_number}"
+            ):
+                errors.append(f"{path}: id must match plan_number and order_number")
         if path.name != f"{directory.name}.md":
             errors.append(f"{path}: Markdown filename must match its ticket directory name")
         state = metadata.get("state")
@@ -507,8 +544,8 @@ class TicketStore:
         return f"---\n{frontmatter}\n---\n\n{body.lstrip()}"
 
     @staticmethod
-    def _render_sections(title: str, sections: dict[str, str]) -> str:
-        chunks = [f"# {title}"]
+    def _render_sections(title: str, sections: dict[str, str], bookmark: str) -> str:
+        chunks = [f'<a id="{bookmark}"></a>', f"# {title}"]
         for section in REQUIRED_SECTIONS:
             chunks.extend(["", f"## {section}", "", sections[section]])
         return "\n".join(chunks) + "\n"
@@ -526,13 +563,30 @@ class TicketStore:
             errors.append(f"{path}: affected_area must be non-empty before state can be ready")
         return errors
 
-    def _next_sequence(self) -> int:
+    def _next_order_number(self, plan_number: int) -> int:
         highest = 0
+        pattern = re.compile(rf"^P{plan_number}-T(\d+)-")
         for directory in self._ticket_directories():
-            match = re.match(r"^OC-(\d+)-", directory.name)
+            match = pattern.match(directory.name)
             if match:
                 highest = max(highest, int(match.group(1)))
         return highest + 1
+
+    @staticmethod
+    def _bookmark(ticket_id: str) -> str:
+        return ticket_id.lower()
+
+    @staticmethod
+    def _get_url(path: Path, bookmark: str) -> str:
+        return f"{path.resolve().as_uri()}#{quote(bookmark, safe='-._~')}"
+
+    @classmethod
+    def _ticket_projection(cls, path: Path, metadata: dict, body: str) -> dict:
+        ticket = {"path": str(path), **cls._json_metadata(metadata), "body": body}
+        bookmark = cls._bookmark(metadata["id"])
+        ticket["bookmark"] = bookmark
+        ticket["get_url"] = cls._get_url(path, bookmark)
+        return ticket
 
     @staticmethod
     def _required_text(value, name: str) -> str:

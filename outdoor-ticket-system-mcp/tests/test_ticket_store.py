@@ -160,29 +160,32 @@ def test_create_update_and_transition_append_history(tmp_path):
         validation_approach="Run ticket service tests.",
         affected_area=["outdoor-ticket-system-mcp/"],
         creation_evidence="Requested directly by the user.",
+        plan_number=7,
     )
-    assert created["id"] == "OC-001"
+    assert created["id"] == "P7-T1"
+    assert created["bookmark"] == "p7-t1"
+    assert created["get_url"].endswith("#p7-t1")
 
-    store.update_ticket("OC-001", {"Objective": "Expose local ticket operations."})
+    store.update_ticket("P7-T1", {"Objective": "Expose local ticket operations."})
     with pytest.raises(ValueError, match="decision_evidence"):
-        store.transition_ticket("OC-001", "ready", "Criteria are complete.")
+        store.transition_ticket("P7-T1", "ready", "Criteria are complete.")
 
     store.transition_ticket(
-        "OC-001", "ready", "Required fields are concrete.", "User approved readiness."
+        "P7-T1", "ready", "Required fields are concrete.", "User approved readiness."
     )
-    store.transition_ticket("OC-001", "in_progress", "Implementation started.")
-    store.transition_ticket("OC-001", "review", "Focused tests passed.")
-    ticket = store.get_ticket("OC-001")
+    store.transition_ticket("P7-T1", "in_progress", "Implementation started.")
+    store.transition_ticket("P7-T1", "review", "Focused tests passed.")
+    ticket = store.get_ticket("P7-T1")
     assert ticket["state"] == "review"
     assert "Created through the ticket MCP" in ticket["body"]
     assert "User approved readiness." in ticket["body"]
     assert "Focused tests passed." in ticket["body"]
     with pytest.raises(ValueError, match="decision_evidence"):
-        store.transition_ticket("OC-001", "closed", "Tests passed.")
-    store.transition_ticket("OC-001", "closed", "User accepted.", "Accepted in review.")
+        store.transition_ticket("P7-T1", "closed", "Tests passed.")
+    store.transition_ticket("P7-T1", "closed", "User accepted.", "Accepted in review.")
 
     with pytest.raises(ValueError, match="non-editable fields: History"):
-        store.update_ticket("OC-001", {"History": "rewritten"})
+        store.update_ticket("P7-T1", {"History": "rewritten"})
 
 
 def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_close(tmp_path):
@@ -195,23 +198,51 @@ def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_cl
         validation_approach="Run the focused ticket transition tests.",
         affected_area=["tickets/"],
         creation_evidence="Requested by users during annotation review.",
+        plan_number=7,
     )
-    assert ticket["id"] == "OC-001"
+    assert ticket["id"] == "P7-T1"
 
     store.transition_ticket(
-        "OC-001",
+        "P7-T1",
         "ready",
         "Annotation requested state change to ready.",
         "User explicitly approved the ready state.",
     )
-    updated = store.get_ticket("OC-001")
+    updated = store.get_ticket("P7-T1")
     assert updated["state"] == "ready"
     assert "Annotation requested state change to ready." in updated["body"]
     assert "User explicitly approved the ready state." in updated["body"]
     assert "Created through the ticket MCP" in updated["body"]
 
     with pytest.raises(ValueError, match="not allowed"):
-        store.transition_ticket("OC-001", "closed", "Close as requested.", "User requested closure.")
+        store.transition_ticket("P7-T1", "closed", "Close as requested.", "User requested closure.")
+
+
+def test_ticket_identifiers_and_bookmarks_are_scoped_to_plan_order(tmp_path):
+    store = _store(tmp_path)
+    common = {
+        "ticket_type": "feature",
+        "objective": "Add an observable behavior.",
+        "acceptance_criteria": ["The behavior is observable."],
+        "validation_approach": "Run the ticket store tests.",
+        "affected_area": ["src/example.py"],
+        "creation_evidence": "Requested for testing.",
+    }
+
+    first = store.create_ticket(title="First plan seven", plan_number=7, **common)
+    second = store.create_ticket(title="Second plan seven", plan_number=7, **common)
+    for order_number in range(3, 11):
+        store.create_ticket(title=f"Plan seven ticket {order_number}", plan_number=7, **common)
+    other_plan = store.create_ticket(title="First plan eight", plan_number=8, **common)
+
+    assert [first["id"], second["id"], other_plan["id"]] == ["P7-T1", "P7-T2", "P8-T1"]
+    assert store.get_ticket("P7-T2")["bookmark"] == "p7-t2"
+    assert store.get_ticket("P7-T2")["get_url"].endswith("#p7-t2")
+    assert '<a id="p7-t1"></a>' in Path(first["path"]).read_text(encoding="utf-8")
+    plan = store.list_tickets(file_format="markdown")
+    assert '<a id="p7-t1"></a>' in plan
+    assert "## P7-T1: First plan seven" in plan
+    assert plan.index("## P7-T9:") < plan.index("## P7-T10:")
 
 
 def test_ready_transition_requires_concrete_fields(tmp_path):
@@ -269,3 +300,72 @@ def test_missing_schema_and_symlink_ticket_are_not_followed(tmp_path):
     (target / "ticket.md").write_text("not a ticket", encoding="utf-8")
     (store.ticket_root / "OC-003-linked").symlink_to(target, target_is_directory=True)
     assert store.validate_tickets()["checked"] == 0
+
+
+def test_repository_registration_crud_persists_and_validates(tmp_path):
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    store = RepositoryStore(tmp_path)
+    created = store.create_repository("speech-agent", "https://example.com/speech-agent.git", "../speech-agent")
+
+    assert created == {
+        "name": "speech-agent",
+        "get_url": "https://example.com/speech-agent.git",
+        "local_directory": "../speech-agent",
+    }
+    assert RepositoryStore(tmp_path).list_repositories() == [created]
+    assert store.get_repository("speech-agent") == created
+
+    updated = store.update_repository("speech-agent", {
+        "name": "speech-agent-v2",
+        "local_directory": "/work/speech-agent",
+    })
+    assert updated["name"] == "speech-agent-v2"
+    assert updated["local_directory"] == "/work/speech-agent"
+    assert store.get_repository("speech-agent-v2") == updated
+
+    assert store.delete_repository("speech-agent-v2") == updated
+    assert store.list_repositories() == []
+    with pytest.raises(KeyError, match="repository not found"):
+        store.get_repository("speech-agent-v2")
+
+
+@pytest.mark.parametrize(
+    ("name", "get_url", "local_directory", "error"),
+    [
+        ("", "https://example.com/repo.git", "/work/repo", "name must be a non-empty string"),
+        ("repo", "", "/work/repo", "get_url must be a non-empty string"),
+        ("repo", "https://example.com/repo.git", " ", "local_directory must be a non-empty string"),
+        ("repo", "/repo.git", "/work/repo", "get_url must be an absolute"),
+    ],
+)
+def test_repository_registration_rejects_invalid_required_fields(
+    tmp_path, name, get_url, local_directory, error
+):
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    with pytest.raises(ValueError, match=error):
+        RepositoryStore(tmp_path).create_repository(name, get_url, local_directory)
+
+
+def test_repository_registration_mcp_tools_expose_crud(tmp_path, monkeypatch):
+    from outdoor_ticket_system_mcp import server
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    monkeypatch.setattr(server, "repository_store", RepositoryStore(tmp_path))
+    tools = {tool.name: tool for tool in server.mcp._tool_manager.list_tools()}
+
+    created = asyncio.run(tools["create_repository"].run({
+        "name": "speech-agent",
+        "get_url": "https://example.com/speech-agent.git",
+        "local_directory": "/work/speech-agent",
+    }))
+    assert created["name"] == "speech-agent"
+    assert asyncio.run(tools["get_repository"].run({"name": "speech-agent"})) == created
+    assert asyncio.run(tools["list_repositories"].run({})) == [created]
+    updated = asyncio.run(tools["update_repository"].run({
+        "name": "speech-agent",
+        "updates": {"local_directory": "/work/speech-agent-copy"},
+    }))
+    assert updated["local_directory"] == "/work/speech-agent-copy"
+    assert asyncio.run(tools["delete_repository"].run({"name": "speech-agent"})) == updated

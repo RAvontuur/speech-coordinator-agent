@@ -4,11 +4,43 @@ from typing import Annotated, Any, Literal
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 
+from .repository_store import RepositoryStore
 from .ticket_store import ticket_store_from_environment
 
 
 mcp = FastMCP("outdoor-ticket-system-mcp")
 ticket_store = ticket_store_from_environment()
+repository_store = RepositoryStore(ticket_store.ticket_root)
+
+
+@mcp.tool()
+def list_repositories() -> list[dict]:
+    """List registered repositories available to the ticket service."""
+    return repository_store.list_repositories()
+
+
+@mcp.tool()
+def get_repository(name: str) -> dict:
+    """Return one registered repository by name."""
+    return repository_store.get_repository(name)
+
+
+@mcp.tool()
+def create_repository(name: str, get_url: str, local_directory: str) -> dict:
+    """Register a repository's name, Git GET URL, and local clone directory."""
+    return repository_store.create_repository(name, get_url, local_directory)
+
+
+@mcp.tool()
+def update_repository(name: str, updates: dict) -> dict:
+    """Update fields on a registered repository, including its name."""
+    return repository_store.update_repository(name, updates)
+
+
+@mcp.tool()
+def delete_repository(name: str) -> dict:
+    """Remove a repository registration by name."""
+    return repository_store.delete_repository(name)
 
 
 def _list_tickets_signature(
@@ -54,6 +86,7 @@ def create_ticket(
     validation_approach: str,
     affected_area: list[str],
     creation_evidence: str,
+    plan_number: int,
     priority: str = "normal",
     dependencies: list[str] | None = None,
     related: list[str] | None = None,
@@ -67,6 +100,7 @@ def create_ticket(
         validation_approach,
         affected_area,
         creation_evidence,
+        plan_number,
         priority,
         dependencies,
         related,
