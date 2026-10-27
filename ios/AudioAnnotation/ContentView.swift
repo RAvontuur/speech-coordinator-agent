@@ -378,6 +378,7 @@ struct ContentView: View {
     }
 
     private func playAnnotationThread(_ annotation: Annotation) {
+        audioPlayer.pause()
         audioPlayer.seek(to: annotation.timestampSeconds)
         let urls = annotation.audioFiles.flatMap(annotationAudioURLs)
         do {
@@ -390,6 +391,7 @@ struct ContentView: View {
     }
 
     private func playRecording(_ recording: AnnotationFile, in annotation: Annotation) {
+        audioPlayer.pause()
         do {
             try annotationPlayback.play(urls: annotationAudioURLs(recording))
         } catch {

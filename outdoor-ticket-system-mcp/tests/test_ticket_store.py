@@ -188,7 +188,7 @@ def test_create_update_and_transition_append_history(tmp_path):
         store.update_ticket("P7-T1", {"History": "rewritten"})
 
 
-def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_close(tmp_path):
+def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_transition(tmp_path):
     store = _store(tmp_path)
     ticket = store.create_ticket(
         title="Add annotation state transitions",
@@ -215,7 +215,52 @@ def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_cl
     assert "Created through the ticket MCP" in updated["body"]
 
     with pytest.raises(ValueError, match="not allowed"):
-        store.transition_ticket("P7-T1", "closed", "Close as requested.", "User requested closure.")
+        store.transition_ticket("P7-T1", "review", "Skip implementation.")
+
+    store.transition_ticket(
+        "P7-T1", "closed", "Close as requested.", "User requested closure."
+    )
+    closed = store.get_ticket("P7-T1")
+    assert closed["state"] == "closed"
+    assert "Close as requested." in closed["body"]
+    assert "User requested closure." in closed["body"]
+
+
+@pytest.mark.parametrize(
+    "state", ["new", "refined", "ready", "in_progress", "review", "blocked"]
+)
+def test_ticket_can_be_cancelled_from_every_open_state_and_is_omitted_from_plan(tmp_path, state):
+    store = _store(tmp_path)
+    _write_ticket(store, state)
+
+    store.transition_ticket(
+        "OC-001",
+        "closed",
+        "Work is no longer relevant.",
+        "The user decided not to pursue this ticket.",
+    )
+
+    ticket = store.get_ticket("OC-001")
+    assert ticket["state"] == "closed"
+    assert (
+        "`closed`: Work is no longer relevant. Decision evidence: "
+        "The user decided not to pursue this ticket."
+    ) in ticket["body"]
+    assert "OC-001" not in store.list_tickets(file_format="markdown")
+
+
+def test_invalid_non_cancellation_transitions_remain_rejected(tmp_path):
+    store = _store(tmp_path)
+    _write_ticket(store, "new")
+
+    with pytest.raises(ValueError, match="not allowed"):
+        store.transition_ticket("OC-001", "in_progress", "Skip refinement.")
+
+    store.transition_ticket(
+        "OC-001", "closed", "Cancel work.", "User requested cancellation."
+    )
+    with pytest.raises(ValueError, match="not allowed"):
+        store.transition_ticket("OC-001", "new", "Reopen ticket.")
 
 
 def test_ticket_identifiers_and_bookmarks_are_scoped_to_plan_order(tmp_path):

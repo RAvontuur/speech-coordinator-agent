@@ -9,6 +9,39 @@ final class AudioPlayerModel: NSObject, ObservableObject, AVAudioPlayerDelegate 
     @Published private(set) var duration = 0.0
 
     private var timer: Timer?
+    private var sessionObservers: [NSObjectProtocol] = []
+
+    override init() {
+        super.init()
+        let notificationCenter = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        sessionObservers = [
+            notificationCenter.addObserver(
+                forName: AVAudioSession.interruptionNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] notification in
+                guard
+                    let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                    AVAudioSession.InterruptionType(rawValue: rawType) == .began
+                else {
+                    return
+                }
+                Task { @MainActor in self?.pause() }
+            },
+            notificationCenter.addObserver(
+                forName: AVAudioSession.routeChangeNotification,
+                object: session,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.pause() }
+            }
+        ]
+    }
+
+    deinit {
+        sessionObservers.forEach(NotificationCenter.default.removeObserver)
+    }
 
     func load(url: URL) throws {
         stop()

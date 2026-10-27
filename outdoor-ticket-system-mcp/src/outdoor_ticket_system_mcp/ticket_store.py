@@ -312,6 +312,7 @@ class TicketStore:
             allowed = set(TRANSITIONS[old_state])
             if old_state != "closed":
                 allowed.add("blocked")
+                allowed.add("closed")
             if new_state not in allowed:
                 raise ValueError(f"transition {old_state!r} -> {new_state!r} is not allowed")
             if new_state == "ready":
