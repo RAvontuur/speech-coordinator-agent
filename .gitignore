@@ -10,3 +10,4 @@ tickets/*
 ticket-queue/*
 plans/*
 test/*
+.idea/*
