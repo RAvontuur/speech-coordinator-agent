@@ -10,11 +10,8 @@
     "outdoor-speech-mcp": {
       "type": "stdio",
       "command": "${workspaceFolder}/.venv/bin/outdoor-speech-mcp",
+      "envFile": "${workspaceFolder}/.env",
       "env": {
-        "AZURE_SPEECH_KEY": "${env:AZURE_SPEECH_KEY}",
-        "AZURE_SPEECH_REGION": "${env:AZURE_SPEECH_REGION}",
-        "OPENAI_API_KEY": "${env:OPENAI_API_KEY}",
-        "OPENAI_MODEL": "${env:OPENAI_MODEL}",
         "OUTDOOR_SPEECH_WORKSPACE_ROOT": "${workspaceFolder}"
       }
     }

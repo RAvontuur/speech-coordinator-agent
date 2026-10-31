@@ -18,7 +18,9 @@ cd outdoor-speech-mcp
 python -m pip install -e .
 ```
 
-Create a `.env` file in the repository root or export these variables:
+Create a `.env` file in the repository root or export these variables. VS Code
+loads this file for `outdoor-speech-mcp` through `.vscode/mcp.json`. The root
+`.env` file is git-ignored; do not commit credentials.
 
 ```env
 AZURE_SPEECH_KEY=your_speech_key_here
@@ -103,6 +105,10 @@ cd outdoor-ticket-system-mcp
 
 VS Code discovers both MCP servers through `.vscode/mcp.json`. Ticket records
 remain under `tickets/`; set `OUTDOOR_TICKET_ROOT` to override that location.
+The speech server loads its credentials and optional settings from the
+git-ignored repository-root `.env` file using VS Code's `envFile` setting.
+Set `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY` there;
+`OPENAI_MODEL` is optional.
 The service requires the schema in `tickets/README.md` and never creates a
 parallel ticket store. Ticket mutations preserve append-only history and use
 the documented state graph. Transitions to `refined`, `ready`, or `closed`
@@ -121,6 +127,4 @@ The speech MCP owns plan synchronization through `next_plan_name`,
 `create_next_plan_dir`, `import_plan`, and `export_plan`. These tools replace
 the former `plan_sync.py` command-line helpers. Import/export use
 `ACTIVE_AUDIO_PLAN` and local `plans/` directories. The speech MCP requires
-`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY`;
-`.vscode/mcp.json` references environment variables rather than storing
-credentials.
+`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY`.
