@@ -9,7 +9,7 @@ from typing import Literal
 import yaml
 
 
-STATES = {"new", "refined", "ready", "in_progress", "review", "blocked", "closed"}
+STATES = {"new", "refined", "ready", "in_progress", "review", "test", "blocked", "closed"}
 REQUIRED_FRONTMATTER = {
     "id",
     "title",
@@ -31,6 +31,7 @@ REQUIRED_SECTIONS = (
     "History",
     "Blockers and Questions",
 )
+REPOSITORY_METADATA = {"repository", "working_branch", "target_branch"}
 EDITABLE_METADATA = {"title", "type", "priority", "dependencies", "related", "affected_area"}
 EDITABLE_SECTIONS = set(REQUIRED_SECTIONS) - {"History"}
 TRANSITIONS = {
@@ -38,7 +39,8 @@ TRANSITIONS = {
     "refined": {"ready"},
     "ready": {"in_progress"},
     "in_progress": {"review"},
-    "review": {"in_progress", "closed"},
+    "review": {"in_progress", "test"},
+    "test": {"closed", "in_progress"},
     "blocked": {"ready", "in_progress"},
     "closed": set(),
 }
@@ -48,8 +50,9 @@ _HISTORY_PATTERN = re.compile(r"^- (\d{4}-\d{2}-\d{2}), `([^`]+)`: (.+)$")
 
 
 class TicketStore:
-    def __init__(self, ticket_root: str | Path):
+    def __init__(self, ticket_root: str | Path, repository_store=None):
         self.ticket_root = Path(ticket_root).expanduser().resolve()
+        self.repository_store = repository_store
         self._lock = threading.RLock()
 
     def list_tickets(
@@ -277,6 +280,95 @@ class TicketStore:
             self._atomic_write(path, content)
         return {"id": metadata["id"], "path": str(path), "updated": metadata["updated"]}
 
+    def select_ticket_repository(
+        self,
+        ticket_id: str,
+        repository_name: str,
+        working_branch: str,
+        target_branch: str | None = None,
+    ) -> dict:
+        if self.repository_store is None:
+            raise ValueError("repository selection is unavailable")
+        repository = self.repository_store.get_repository(repository_name)
+        resolved_target = (
+            target_branch
+            if target_branch is not None
+            else repository.get("default_target_branch")
+        )
+        if not resolved_target:
+            raise ValueError(
+                f"repository {repository_name} has no default target branch; "
+                "specify target_branch explicitly"
+            )
+        values = {
+            "repository": self._required_text(repository_name, "repository"),
+            "working_branch": self._required_text(working_branch, "working_branch"),
+            "target_branch": self._required_text(resolved_target, "target_branch"),
+        }
+        with self._lock:
+            path = self._find_ticket_path(ticket_id)
+            errors, metadata, body = self._validate_file(path)
+            if errors:
+                raise ValueError("cannot update invalid ticket: " + "; ".join(errors))
+            for key, value in values.items():
+                metadata[key] = value
+            metadata["updated"] = date.today().isoformat()
+            body = self._append_history_event(
+                body, metadata["state"],
+                "Repository selected: "
+                f"repository={values['repository']}, working_branch={values['working_branch']}, "
+                f"target_branch={values['target_branch']}.",
+            )
+            content = self._serialize(metadata, body)
+            errors, _, _ = self._validate_content(content, path.parent, path)
+            if errors:
+                raise ValueError("repository selection would make ticket invalid: " + "; ".join(errors))
+            self._atomic_write(path, content)
+        return {"id": metadata["id"], **values, "path": str(path)}
+
+    def create_working_branch(self, ticket_id: str) -> dict:
+        if self.repository_store is None:
+            raise ValueError("Git branch operations are unavailable")
+        with self._lock:
+            path = self._find_ticket_path(ticket_id)
+            errors, metadata, body = self._validate_file(path)
+            if errors:
+                raise ValueError("cannot create branch for invalid ticket: " + "; ".join(errors))
+            if metadata["state"] != "in_progress":
+                raise ValueError("working branches can only be created for in_progress tickets")
+            repository = self._selected_repository(metadata)
+            result = self.repository_store.create_working_branch(
+                repository, metadata["working_branch"], metadata["target_branch"]
+            )
+            body = self._append_history_event(
+                body, metadata["state"],
+                ("Working branch created: " if result["created"] else "Existing working branch resumed: ")
+                + f"repository={result['repository']}, working_branch={result['working_branch']}, "
+                f"target_branch={result['target_branch']}.",
+            )
+            metadata["updated"] = date.today().isoformat()
+            self._atomic_write(path, self._serialize(metadata, body))
+        return {"id": metadata["id"], **result}
+
+    def _selected_repository(self, metadata: dict) -> dict:
+        missing = REPOSITORY_METADATA - metadata.keys()
+        if missing:
+            raise ValueError(
+                "ticket repository selection is incomplete: " + ", ".join(sorted(missing))
+            )
+        if self.repository_store is None:
+            raise ValueError("repository operations are unavailable")
+        return self.repository_store.get_repository(metadata["repository"])
+
+    @staticmethod
+    def _append_history_event(body: str, state: str, evidence: str) -> str:
+        history = TicketStore._section_body(body, "History")
+        entry = (
+            f"- {date.today().isoformat()}, `{state}`: "
+            f"{TicketStore._single_line(evidence)}"
+        )
+        return TicketStore._replace_section(body, "History", f"{history.rstrip()}\n{entry}")
+
     def transition_ticket(
         self,
         ticket_id: str,
@@ -306,6 +398,18 @@ class TicketStore:
                 readiness_errors = self._readiness_errors(metadata, body, path)
                 if readiness_errors:
                     raise ValueError("ticket is not ready: " + "; ".join(readiness_errors))
+            if new_state == "test":
+                repository = self._selected_repository(metadata)
+                if not self.repository_store:
+                    raise ValueError("repository operations are unavailable")
+                merge = self.repository_store.merge_working_branch(
+                    repository, metadata["working_branch"], metadata["target_branch"]
+                )
+                evidence = (
+                    f"{self._single_line(evidence)} Merge completed: "
+                    f"repository={merge['repository']}, working_branch={merge['working_branch']}, "
+                    f"target_branch={merge['target_branch']}."
+                )
             history = self._section_body(body, "History")
             entry = f"- {date.today().isoformat()}, `{new_state}`: {evidence}"
             if decision_evidence:
@@ -413,6 +517,11 @@ class TicketStore:
         for key in ("title", "type", "priority"):
             if key in metadata and (not isinstance(metadata[key], str) or not metadata[key].strip()):
                 errors.append(f"{path}: {key} must be a non-empty string")
+        for key in REPOSITORY_METADATA:
+            if key in metadata and (
+                not isinstance(metadata[key], str) or not metadata[key].strip()
+            ):
+                errors.append(f"{path}: {key} must be a non-empty string when supplied")
         for key in ("created", "updated"):
             if key in metadata and not isinstance(metadata[key], date):
                 try:
@@ -558,6 +667,8 @@ class TicketStore:
             "refined": "wait for explicit user approval before implementation",
             "ready": "begin implementation",
             "in_progress": "continue implementation and focused validation",
+            "review": "review the implementation; request testing when closure is intended",
+            "test": "test the merged changes; close only after testing is accepted",
             "blocked": "resolve the recorded blocker and document the next action",
         }.get(state, "review the ticket and choose the next action")
 

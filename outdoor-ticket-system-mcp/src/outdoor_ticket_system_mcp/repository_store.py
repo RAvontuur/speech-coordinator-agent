@@ -2,12 +2,14 @@ import json
 import os
 import tempfile
 import threading
+import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
 
 
 class RepositoryStore:
-    _FIELDS = {"name", "get_url", "local_directory"}
+    _FIELDS = {"name", "get_url", "local_directory", "default_target_branch"}
+    _REQUIRED_FIELDS = {"name", "get_url", "local_directory"}
 
     def __init__(self, storage_directory: str | Path):
         self.storage_directory = Path(storage_directory).expanduser().resolve()
@@ -26,11 +28,18 @@ class RepositoryStore:
             except KeyError:
                 raise KeyError(f"repository not found: {name}") from None
 
-    def create_repository(self, name: str, get_url: str, local_directory: str) -> dict:
+    def create_repository(
+        self,
+        name: str,
+        get_url: str,
+        local_directory: str,
+        default_target_branch: str | None = None,
+    ) -> dict:
         repository = self._validated_repository({
             "name": name,
             "get_url": get_url,
             "local_directory": local_directory,
+            "default_target_branch": default_target_branch,
         })
         with self._lock:
             repositories = self._read()
@@ -117,7 +126,7 @@ class RepositoryStore:
     def _validated_repository(cls, repository) -> dict:
         if not isinstance(repository, dict):
             raise ValueError("repository registration must be an object")
-        missing = cls._FIELDS - repository.keys()
+        missing = cls._REQUIRED_FIELDS - repository.keys()
         if missing:
             raise ValueError(f"missing required repository fields: {', '.join(sorted(missing))}")
         name = cls._required_text(repository["name"], "name")
@@ -126,7 +135,144 @@ class RepositoryStore:
         parsed_url = urlsplit(get_url)
         if parsed_url.scheme not in {"http", "https", "ssh", "git"} or not parsed_url.netloc:
             raise ValueError("get_url must be an absolute HTTP(S), SSH, or Git URL")
-        return {"name": name, "get_url": get_url, "local_directory": local_directory}
+        default_target_branch = repository.get("default_target_branch")
+        if default_target_branch is not None:
+            default_target_branch = cls._required_text(default_target_branch, "default_target_branch")
+        result = {"name": name, "get_url": get_url, "local_directory": local_directory}
+        if default_target_branch is not None:
+            result["default_target_branch"] = default_target_branch
+        return result
+
+    def create_working_branch(
+        self, repository: dict, working_branch: str, target_branch: str
+    ) -> dict:
+        directory = self._git_directory(repository)
+        working_branch = self._validate_branch(directory, working_branch)
+        target_branch = self._validate_branch(directory, target_branch)
+        if working_branch == target_branch:
+            raise ValueError("working branch and target branch must be different")
+        self._require_clean_worktree(directory)
+        if not self._branch_exists(directory, target_branch):
+            raise ValueError(f"target branch does not exist: {target_branch}")
+        created = not self._branch_exists(directory, working_branch)
+        if not created:
+            self._run_git(
+                directory, "switch", working_branch, action="switch to existing working branch"
+            )
+            self._run_git(
+                directory, "merge", "--ff-only", target_branch,
+                action=f"update {working_branch} from {target_branch}",
+            )
+        else:
+            self._run_git(
+                directory, "switch", "--create", working_branch, target_branch,
+                action="create working branch",
+            )
+        return {
+            "repository": repository["name"],
+            "working_branch": working_branch,
+            "target_branch": target_branch,
+            "local_directory": str(directory),
+            "created": created,
+        }
+
+    def merge_working_branch(
+        self, repository: dict, working_branch: str, target_branch: str
+    ) -> dict:
+        directory = self._git_directory(repository)
+        working_branch = self._validate_branch(directory, working_branch)
+        target_branch = self._validate_branch(directory, target_branch)
+        if working_branch == target_branch:
+            raise ValueError("working branch and target branch must be different")
+        self._require_clean_worktree(directory)
+        if not self._branch_exists(directory, working_branch):
+            raise ValueError(f"working branch does not exist: {working_branch}")
+        if not self._branch_exists(directory, target_branch):
+            raise ValueError(f"target branch does not exist: {target_branch}")
+        self._run_git(directory, "switch", target_branch, action="switch to target branch")
+        try:
+            self._run_git(
+                directory, "merge", "--no-edit", working_branch,
+                action=f"merge {working_branch} into {target_branch}",
+            )
+        except ValueError as error:
+            # Leave the selected repository out of a conflicted merge state.
+            subprocess.run(
+                ["git", "-C", str(directory), "merge", "--abort"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            raise ValueError(
+                f"merge failed for repository {repository['name']} "
+                f"({working_branch} -> {target_branch}): {error}"
+            ) from error
+        return {
+            "repository": repository["name"],
+            "working_branch": working_branch,
+            "target_branch": target_branch,
+            "local_directory": str(directory),
+        }
+
+    @staticmethod
+    def _git_directory(repository: dict) -> Path:
+        directory = Path(repository["local_directory"]).expanduser().resolve()
+        if not directory.is_dir():
+            raise ValueError(f"registered repository directory does not exist: {directory}")
+        result = subprocess.run(
+            ["git", "-C", str(directory), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise ValueError(
+                f"registered directory is not a Git repository ({repository['name']}): "
+                f"{result.stderr.strip() or result.stdout.strip()}"
+            )
+        return Path(result.stdout.strip()).resolve()
+
+    @classmethod
+    def _validate_branch(cls, directory: Path, branch: str) -> str:
+        branch = cls._required_text(branch, "branch")
+        result = subprocess.run(
+            ["git", "-C", str(directory), "check-ref-format", "--branch", branch],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            raise ValueError(f"invalid Git branch name: {branch}")
+        return branch
+
+    @classmethod
+    def _branch_exists(cls, directory: Path, branch: str) -> bool:
+        result = subprocess.run(
+            ["git", "-C", str(directory), "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    @classmethod
+    def _require_clean_worktree(cls, directory: Path) -> None:
+        result = cls._run_git(directory, "status", "--porcelain", action="inspect worktree")
+        if result.stdout.strip():
+            raise ValueError(f"Git worktree is not clean: {directory}")
+
+    @staticmethod
+    def _run_git(directory: Path, *arguments: str, action: str) -> subprocess.CompletedProcess:
+        result = subprocess.run(
+            ["git", "-C", str(directory), *arguments],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown Git error"
+            raise ValueError(f"could not {action}: {detail}")
+        return result
 
     @staticmethod
     def _required_text(value, field: str) -> str:

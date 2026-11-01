@@ -11,6 +11,7 @@ from .ticket_store import ticket_store_from_environment
 mcp = FastMCP("outdoor-ticket-system-mcp")
 ticket_store = ticket_store_from_environment()
 repository_store = RepositoryStore(ticket_store.ticket_root)
+ticket_store.repository_store = repository_store
 
 
 @mcp.tool()
@@ -26,9 +27,16 @@ def get_repository(name: str) -> dict:
 
 
 @mcp.tool()
-def create_repository(name: str, get_url: str, local_directory: str) -> dict:
+def create_repository(
+    name: str,
+    get_url: str,
+    local_directory: str,
+    default_target_branch: str | None = None,
+) -> dict:
     """Register a repository's name, Git GET URL, and local clone directory."""
-    return repository_store.create_repository(name, get_url, local_directory)
+    return repository_store.create_repository(
+        name, get_url, local_directory, default_target_branch
+    )
 
 
 @mcp.tool()
@@ -41,6 +49,25 @@ def update_repository(name: str, updates: dict) -> dict:
 def delete_repository(name: str) -> dict:
     """Remove a repository registration by name."""
     return repository_store.delete_repository(name)
+
+
+@mcp.tool()
+def select_ticket_repository(
+    ticket_id: str,
+    repository_name: str,
+    working_branch: str,
+    target_branch: str | None = None,
+) -> dict:
+    """Record the registered repository and resolved branch names for a ticket."""
+    return ticket_store.select_ticket_repository(
+        ticket_id, repository_name, working_branch, target_branch
+    )
+
+
+@mcp.tool()
+def create_working_branch(ticket_id: str) -> dict:
+    """Create the selected ticket branch from its target immediately before coding."""
+    return ticket_store.create_working_branch(ticket_id)
 
 
 def _list_tickets_signature(

@@ -111,9 +111,14 @@ Set `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY` there;
 `OPENAI_MODEL` is optional.
 The service requires the schema in `tickets/README.md` and never creates a
 parallel ticket store. Ticket mutations preserve append-only history and use
-the documented state graph. Transitions to `refined`, `ready`, or `closed`
-require `decision_evidence`; every transition requires `evidence`. MCP records
-caller-supplied evidence but cannot authenticate who supplied it.
+the documented state graph, including user-controlled `test` after `review`.
+An explicit request to test a reviewed ticket merges its recorded working
+branch into the target first; failures leave it in `review`. Registered
+repositories may define `default_target_branch`, which is saved on a selected
+ticket unless refinement supplies an override. Transitions to `refined`,
+`ready`, or `closed` require `decision_evidence`; every transition requires
+`evidence`. MCP records caller-supplied evidence but cannot authenticate who
+supplied it.
 
 The ticket tools are `list_tickets`, `get_ticket`, `validate_tickets`,
 `create_ticket`, `update_ticket`, and `transition_ticket`. Use
@@ -122,6 +127,11 @@ work. Its `file-format="markdown"` mode returns the Sprint Review Plan from
 all non-closed tickets by default. Save it as `plan.md` in a new local Sprint
 Review directory, then use `synthesize_audio_plan` and `export_plan` from
 `outdoor-speech-mcp` to generate and deploy the audio package.
+Repository registration uses `list_repositories`, `get_repository`,
+`create_repository`, `update_repository`, and `delete_repository`.
+`select_ticket_repository` records a ticket's repository and resolved branches;
+`create_working_branch` creates or resumes its implementation branch before
+coder dispatch.
 
 The speech MCP owns plan synchronization through `next_plan_name`,
 `create_next_plan_dir`, `import_plan`, and `export_plan`. These tools replace

@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -414,3 +415,217 @@ def test_repository_registration_mcp_tools_expose_crud(tmp_path, monkeypatch):
     }))
     assert updated["local_directory"] == "/work/speech-agent-copy"
     assert asyncio.run(tools["delete_repository"].run({"name": "speech-agent"})) == updated
+
+
+def _git(directory: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(directory), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout.strip()
+
+
+def _git_repository(tmp_path: Path):
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    directory = tmp_path / "work"
+    directory.mkdir()
+    subprocess.run(
+        ["git", "init", "-b", "main", str(directory)], check=True, capture_output=True
+    )
+    _git(directory, "config", "user.name", "Ticket Tests")
+    _git(directory, "config", "user.email", "ticket-tests@example.invalid")
+    (directory / "sample.txt").write_text("base\n", encoding="utf-8")
+    _git(directory, "add", "sample.txt")
+    _git(directory, "commit", "-m", "base")
+    repositories = RepositoryStore(tmp_path / "registry")
+    repositories.create_repository(
+        "example", "https://example.invalid/repo.git", str(directory),
+        default_target_branch="main",
+    )
+    return directory, repositories
+
+
+def _routed_ticket(tmp_path: Path, state="in_progress"):
+    store = _store(tmp_path)
+    _write_ticket(store, state=state)
+    directory, repositories = _git_repository(tmp_path)
+    store.repository_store = repositories
+    return store, directory
+
+
+def test_repository_registration_default_branch_and_ticket_override(tmp_path):
+    store = _store(tmp_path)
+    path = _write_ticket(store)
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    repositories = RepositoryStore(tmp_path / "registry")
+    repositories.create_repository(
+        "example", "https://example.invalid/repo.git", "/work/example",
+        default_target_branch="trunk",
+    )
+    store.repository_store = repositories
+
+    selected = store.select_ticket_repository(
+        "OC-001", "example", "oc-001-feature"
+    )
+    assert selected["target_branch"] == "trunk"
+    ticket = store.get_ticket("OC-001")
+    assert ticket["repository"] == "example"
+    assert ticket["working_branch"] == "oc-001-feature"
+    assert ticket["target_branch"] == "trunk"
+    assert "repository=example" in ticket["body"]
+    assert "target_branch=trunk" in ticket["body"]
+
+    overridden = store.select_ticket_repository(
+        "OC-001", "example", "oc-001-feature", "release"
+    )
+    assert overridden["target_branch"] == "release"
+    assert store.get_ticket("OC-001")["target_branch"] == "release"
+    assert path.is_file()
+
+
+def test_repository_selection_requires_default_or_explicit_target(tmp_path):
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    store = _store(tmp_path)
+    _write_ticket(store)
+    repositories = RepositoryStore(tmp_path / "registry")
+    repositories.create_repository("example", "https://example.invalid/repo.git", "/work/example")
+    store.repository_store = repositories
+
+    with pytest.raises(ValueError, match="no default target branch"):
+        store.select_ticket_repository("OC-001", "example", "oc-001-feature")
+    assert store.select_ticket_repository(
+        "OC-001", "example", "oc-001-feature", "stable"
+    )["target_branch"] == "stable"
+
+
+def test_repository_selection_mcp_tool_records_resolved_branches(tmp_path, monkeypatch):
+    from outdoor_ticket_system_mcp import server
+    from outdoor_ticket_system_mcp.repository_store import RepositoryStore
+
+    store = _store(tmp_path)
+    _write_ticket(store)
+    repositories = RepositoryStore(tmp_path / "registry")
+    store.repository_store = repositories
+    monkeypatch.setattr(server, "ticket_store", store)
+    monkeypatch.setattr(server, "repository_store", repositories)
+    tools = {tool.name: tool for tool in server.mcp._tool_manager.list_tools()}
+    registered = asyncio.run(tools["create_repository"].run({
+        "name": "example",
+        "get_url": "https://example.invalid/repo.git",
+        "local_directory": "/work/example",
+        "default_target_branch": "main",
+    }))
+    assert registered["default_target_branch"] == "main"
+
+    result = asyncio.run(tools["select_ticket_repository"].run({
+        "ticket_id": "OC-001",
+        "repository_name": "example",
+        "working_branch": "oc-001-feature",
+    }))
+
+    assert result["target_branch"] == "main"
+    ticket = store.get_ticket("OC-001")
+    assert ticket["repository"] == "example"
+    assert "target_branch=main" in ticket["body"]
+    assert {"create_working_branch", "transition_ticket"} <= tools.keys()
+
+
+def test_working_branch_created_from_selected_target_before_coding(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+
+    result = store.create_working_branch("OC-001")
+
+    assert result["working_branch"] == "oc-001-example"
+    assert _git(directory, "branch", "--show-current") == "oc-001-example"
+    history = store.get_ticket("OC-001")["body"]
+    assert "Working branch created" in history
+    assert "repository=example" in history
+    assert "target_branch=main" in history
+
+
+def test_user_test_transition_merges_before_recording_test_and_can_close(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    (directory / "feature.txt").write_text("implemented\n", encoding="utf-8")
+    _git(directory, "add", "feature.txt")
+    _git(directory, "commit", "-m", "implement feature")
+    _git(directory, "switch", "main")
+    store.transition_ticket("OC-001", "review", "Implementation review is ready.")
+
+    store.transition_ticket("OC-001", "test", "User requested closure and testing.")
+
+    ticket = store.get_ticket("OC-001")
+    assert ticket["state"] == "test"
+    assert (directory / "feature.txt").read_text(encoding="utf-8") == "implemented\n"
+    assert _git(directory, "branch", "--show-current") == "main"
+    assert "repository=example" in ticket["body"]
+    assert "working_branch=oc-001-example" in ticket["body"]
+    assert "target_branch=main" in ticket["body"]
+    with pytest.raises(ValueError, match="decision_evidence"):
+        store.transition_ticket("OC-001", "closed", "Testing passed.")
+    store.transition_ticket(
+        "OC-001", "closed", "Testing passed.", "User accepted the tested change."
+    )
+    assert store.get_ticket("OC-001")["state"] == "closed"
+
+
+def test_merge_failure_leaves_ticket_in_review_and_reports_error(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-conflict")
+    store.create_working_branch("OC-001")
+    (directory / "sample.txt").write_text("working change\n", encoding="utf-8")
+    _git(directory, "add", "sample.txt")
+    _git(directory, "commit", "-m", "working change")
+    _git(directory, "switch", "main")
+    (directory / "sample.txt").write_text("target change\n", encoding="utf-8")
+    _git(directory, "add", "sample.txt")
+    _git(directory, "commit", "-m", "target change")
+    store.transition_ticket("OC-001", "review", "Implementation review is ready.")
+
+    with pytest.raises(ValueError, match="merge failed.*example.*oc-001-conflict.*main"):
+        store.transition_ticket("OC-001", "test", "User requested closure.")
+
+    assert store.get_ticket("OC-001")["state"] == "review"
+    assert _git(directory, "branch", "--show-current") == "main"
+    assert _git(directory, "status", "--porcelain") == ""
+    assert not (directory / ".git" / "MERGE_HEAD").exists()
+
+
+def test_review_does_not_enter_test_until_user_requests_it(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    _git(directory, "switch", "main")
+    store.transition_ticket("OC-001", "review", "Implementation review is ready.")
+    assert store.get_ticket("OC-001")["state"] == "review"
+
+    store.transition_ticket("OC-001", "test", "User explicitly requested testing.")
+
+    assert store.get_ticket("OC-001")["state"] == "test"
+
+
+def test_reopened_ticket_resumes_its_existing_working_branch(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-resume")
+    store.create_working_branch("OC-001")
+    (directory / "feature.txt").write_text("first implementation\n", encoding="utf-8")
+    _git(directory, "add", "feature.txt")
+    _git(directory, "commit", "-m", "first implementation")
+    _git(directory, "switch", "main")
+    store.transition_ticket("OC-001", "review", "Review the implementation.")
+    store.transition_ticket("OC-001", "in_progress", "User requested implementation changes.")
+
+    resumed = store.create_working_branch("OC-001")
+
+    assert resumed["working_branch"] == "oc-001-resume"
+    assert _git(directory, "branch", "--show-current") == "oc-001-resume"
+    assert (directory / "feature.txt").read_text(encoding="utf-8") == "first implementation\n"
+    assert "Existing working branch resumed" in store.get_ticket("OC-001")["body"]

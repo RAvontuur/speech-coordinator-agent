@@ -14,17 +14,28 @@ local ticket schema in `tickets/README.md` and keep your edits narrow and eviden
 
 1. Read the ticket with `get_ticket` and review `tickets/README.md` before changing it.
 2. Identify which required fields are missing, placeholder-like, or too vague for implementation.
-3. Update the ticket body to add or sharpen:
+3. Call `list_repositories` and identify the registered Git repository that best matches the
+   ticket objective and affected areas. Do not invent a registration or choose by guesswork
+   when multiple repositories are equally plausible; report the choice needed from the user.
+   For a clear match, choose a working branch name (normally `oc-<ticket-id>-<short-slug>`).
+   Use a ticket-specified target branch when present; otherwise let
+   `select_ticket_repository` resolve the registration's `default_target_branch`. If neither
+   is available, ask for a decision and leave the ticket unselected.
+4. Update the ticket body to add or sharpen:
    - the objective,
    - acceptance criteria,
    - validation approach,
    - affected area, and
    - any missing dependencies or related context.
-4. Keep the ticket in its current state unless the user explicitly decides otherwise. Do not
+5. Record the repository and branch choice with `select_ticket_repository` before
+   implementation dispatch. This saves the resolved target branch and appends the routing
+   details to ticket History. Keep the ticket out of the implementation queue if selection
+   cannot be made.
+6. Keep the ticket in its current state unless the user explicitly decides otherwise. Do not
    move a ticket to `ready`, `refined`, or `closed` as part of the refinement pass.
-5. Use `update_ticket` to save the clarified wording and add evidence that the ticket is now
+7. Use `update_ticket` to save the clarified wording and add evidence that the ticket is now
    actionable for the next implementation pass.
-6. Return a concise summary of the issue, the specific edits made, and any remaining blocker
+8. Return a concise summary of the issue, the specific edits made, and any remaining blocker
    or question that still requires a user decision.
 
 ## Refinement standard

@@ -24,3 +24,18 @@ def test_dispatcher_supports_annotation_state_transitions_and_history_preservati
     assert "decision_evidence" in dispatcher or "evidence" in dispatcher
     assert "keep a ticket in `review`" in schema or "History" in schema
     assert "Do not change ticket state in response to annotations" not in dispatcher
+
+
+def test_repository_branch_and_user_testing_workflow_is_documented():
+    dispatcher = Path(".github/agents/outdoor-ticket-dispatcher.agent.md").read_text()
+    refinement = Path(".github/agents/outdoor-refinement.agent.md").read_text()
+    coder = Path(".github/agents/outdoor-ticket-coder.agent.md").read_text()
+    schema = Path("tickets/README.md").read_text()
+
+    assert "select_ticket_repository" in refinement
+    assert "default_target_branch" in refinement
+    assert "create_working_branch" in dispatcher
+    assert "merge fails" in dispatcher
+    assert "`review` -> `test`" in dispatcher
+    assert "working_branch" in coder
+    assert "`test`" in schema

@@ -50,19 +50,25 @@ agent before the queue is considered ready for implementation.
 
 1. Call `list_tickets` with `output_mode="full"` and inspect all non-closed
 	tickets for obvious refinement gaps: missing Objective, Acceptance Criteria,
-	Validation Approach, affected area, or purposeful wording; placeholder text;
-	or explicit user notes that a ticket needs more detail before implementation.
+	Validation Approach, affected area, repository/working-branch/target-branch routing,
+	or purposeful wording; placeholder text; or explicit user notes that a ticket needs
+	more detail before implementation.
 2. Consider tickets in `new` and `refined` states first, then any other open
 	ticket with an unresolved readiness gap.
-3. For each flagged ticket, invoke the Outdoor Refinement agent in a fresh
+3. Before any implementation dispatch, confirm each ready ticket identifies a
+	registered repository, working branch, and resolved target branch. For a missing or
+	ambiguous selection, invoke the Outdoor Refinement agent even if the ticket body is
+	otherwise actionable.
+4. For each flagged ticket, invoke the Outdoor Refinement agent in a fresh
 	context with the ticket ID and the ticket text. Require a focused refinement
-	pass that makes the ticket actionable without advancing it to `ready` or
-	`closed` automatically.
-4. After the refinement agent returns, re-check that the ticket now has the
+	pass that makes the ticket actionable, selects the appropriate registered
+	repository, and records branch names with `select_ticket_repository`, without
+	advancing it to `ready` or `closed` automatically.
+5. After the refinement agent returns, re-check that the ticket now has the
 	required information for implementation. If it still lacks a clear objective,
-	acceptance details, validation approach, or affected area, keep it out of the
-	ready queue and report the blocker in the ticket notes.
-5. Do not implement or automatically advance `new`, `refined`, `review`, or
+	acceptance details, validation approach, affected area, or repository/branch
+	selection, keep it out of the ready queue and report the blocker in the ticket notes.
+6. Do not implement or automatically advance `new`, `refined`, `review`, or
 	`blocked` tickets. Refinement guidance, user review, and readiness decisions
 	remain manual.
 
@@ -70,21 +76,43 @@ agent before the queue is considered ready for implementation.
 
 1. Call `list_tickets` with `state="ready"` and `output_mode="full"`. If no
 	tickets are ready, skip implementation but continue to audio-plan creation.
-2. Respect dependencies and process one ticket at a time. Before delegation,
-	call `transition_ticket` to move the selected ticket to `in_progress`, with
-	evidence that implementation is starting.
-3. Pass the full ticket and its ID to the Outdoor Ticket Coder in a fresh
+2. Respect dependencies and process one ticket at a time. Verify the selected
+	repository and branches are recorded. Before delegation, call `transition_ticket`
+	to move the selected ticket to `in_progress`, with evidence that implementation is
+	starting.
+3. Immediately after the `in_progress` transition, call `create_working_branch` for
+	that ticket. Do not dispatch the coder unless branch creation succeeds. The tool
+	creates the working branch from the target branch and appends repository/branch
+	details to History.
+4. Pass the full ticket, repository registration (including `local_directory`), and
+	its ID to the Outdoor Ticket Coder in a fresh
 	context. The coder implements only that ticket and returns its outcome,
 	changed files, validation, and blockers.
-4. On successful completion, use `update_ticket` to record the change and
+5. On successful completion, use `update_ticket` to record the change and
 	detailed review documentation, then transition the ticket to `review` with
 	implementation and validation evidence. Do not close it. If work is
 	blocked, transition it to `blocked` with the blocker evidence. If the coder
 	fails or does not start, leave the ticket `in_progress` and report why.
-5. Do not implement or automatically advance `new`, `refined`, `review`, or
+6. Do not implement or automatically advance `new`, `refined`, `review`, or
 	`blocked` tickets. Review comments and readiness decisions remain manual.
 
-### 4. Generate and deploy the Sprint Review audio plan
+### 4. User-requested closure and testing
+
+1. Never move a `review` ticket to `test` automatically. Only an explicit user
+	request to close/accept the reviewed implementation authorizes the
+	`review` -> `test` transition. On that request call `transition_ticket` with
+	`new_state="test"` and the user evidence; the ticket service merges its recorded
+	working branch into its target before changing state. History records repository
+	and branch details. If merge fails, report the exact tool error and leave the ticket
+	in `review`; do not claim testing began.
+2. A normal acceptance/closure request from `review` starts this merge-and-test path,
+	not a direct `closed` transition. A distinct explicit cancellation request may still
+	close an open ticket without a merge. After testing, close a `test` ticket only when
+	the user explicitly accepts closure, using the required `decision_evidence`.
+3. Do not test or move to `closed` on the user's behalf. Report test status and await
+	the user's next instruction.
+
+### 5. Generate and deploy the Sprint Review audio plan
 
 1. Call `create_next_plan_dir` on `outdoor-speech-mcp` and use its returned
 	`plan_name` and directory path.
