@@ -127,7 +127,6 @@ def create_ticket(
         validation_approach,
         affected_area,
         creation_evidence,
-        plan_number,
         priority,
         dependencies,
         related,

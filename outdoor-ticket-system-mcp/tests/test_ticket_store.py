@@ -151,6 +151,31 @@ def test_mcp_list_tickets_accepts_hyphenated_file_format(tmp_path, monkeypatch):
     assert "OC-001: Example ticket" in result
 
 
+def test_mcp_create_ticket_forwards_store_arguments_without_plan_number(tmp_path, monkeypatch):
+    from outdoor_ticket_system_mcp import server
+
+    store = _store(tmp_path)
+    monkeypatch.setattr(server, "ticket_store", store)
+    tool = next(
+        tool for tool in server.mcp._tool_manager.list_tools() if tool.name == "create_ticket"
+    )
+
+    result = asyncio.run(tool.run({
+        "title": "Add ticket creation regression",
+        "ticket_type": "feature",
+        "objective": "Create a ticket through the MCP tool.",
+        "acceptance_criteria": ["The MCP tool creates a valid ticket."],
+        "validation_approach": "Run the focused ticket service test.",
+        "affected_area": ["outdoor-ticket-system-mcp/"],
+        "creation_evidence": "Regression test for the create_ticket wrapper.",
+        "plan_number": 15,
+    }))
+
+    assert result["id"] == "OC-001"
+    assert result["state"] == "new"
+    assert store.get_ticket("OC-001")["title"] == "Add ticket creation regression"
+
+
 def test_create_update_and_transition_append_history(tmp_path):
     store = _store(tmp_path)
     created = store.create_ticket(
