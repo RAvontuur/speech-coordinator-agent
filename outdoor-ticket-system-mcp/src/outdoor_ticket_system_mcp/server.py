@@ -70,6 +70,12 @@ def create_working_branch(ticket_id: str) -> dict:
     return ticket_store.create_working_branch(ticket_id)
 
 
+@mcp.tool()
+def finish_working_branch(ticket_id: str) -> dict:
+    """Commit ticket changes and switch back to its selected target after coding."""
+    return ticket_store.finish_working_branch(ticket_id)
+
+
 def _list_tickets_signature(
     state: str | None = None,
     output_mode: Literal["ids", "headers", "full"] = "headers",

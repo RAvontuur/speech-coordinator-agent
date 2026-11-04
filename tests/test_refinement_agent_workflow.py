@@ -35,6 +35,8 @@ def test_repository_branch_and_user_testing_workflow_is_documented():
     assert "select_ticket_repository" in refinement
     assert "default_target_branch" in refinement
     assert "create_working_branch" in dispatcher
+    assert "finish_working_branch" in dispatcher
+    assert "Do not update the ticket to `review` unless cleanup succeeds" in dispatcher
     assert "merge fails" in dispatcher
     assert "`review` -> `test`" in dispatcher
     assert "working_branch" in coder

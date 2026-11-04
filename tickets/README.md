@@ -55,6 +55,8 @@ Ticket routing fields are optional until refinement: `repository` names a regist
 
 The `outdoor-ticket-system-mcp` validates this schema before ticket operations. It requires dated history entries with a state and evidence, protects `History` from ordinary updates, and records transition evidence. Any non-closed ticket may move to `blocked`; the transition evidence is copied into `Blockers and Questions`. A blocked ticket may return to `ready` or `in_progress` once its blocker is resolved. Readiness validation checks that the objective, acceptance criteria, validation approach, and affected area are present and not obvious placeholders; it cannot judge whether their meaning is sufficiently precise. The MCP requires caller-supplied decision evidence for `refined`, `ready`, and `closed`, but does not authenticate the caller's identity.
 
+After successful coding and before moving a ticket to `review`, the dispatcher calls `finish_working_branch`. This operation commits pending tracked, staged, and untracked non-ignored changes on the ticket's recorded working branch, then checks out the recorded target branch without merging. It requires the recorded working branch to be checked out; it never commits changes on another branch. If cleanup fails, the ticket must not advance to `review`.
+
 Examples of valid state values include `state: refined`, `state: ready`, `state: review`, `state: test`, and `state: closed`.
 
 ## Plan Inclusion

@@ -558,7 +558,7 @@ def test_repository_selection_mcp_tool_records_resolved_branches(tmp_path, monke
     ticket = store.get_ticket("OC-001")
     assert ticket["repository"] == "example"
     assert "target_branch=main" in ticket["body"]
-    assert {"create_working_branch", "transition_ticket"} <= tools.keys()
+    assert {"create_working_branch", "finish_working_branch", "transition_ticket"} <= tools.keys()
 
 
 def test_working_branch_created_from_selected_target_before_coding(tmp_path):
@@ -573,6 +573,70 @@ def test_working_branch_created_from_selected_target_before_coding(tmp_path):
     assert "Working branch created" in history
     assert "repository=example" in history
     assert "target_branch=main" in history
+
+
+def test_finish_working_branch_commits_changes_and_checks_out_target(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    (directory / "sample.txt").write_text("implemented\n", encoding="utf-8")
+    _git(directory, "add", "sample.txt")
+    (directory / "new-file.txt").write_text("new file\n", encoding="utf-8")
+
+    result = store.finish_working_branch("OC-001")
+
+    assert result["committed"] is True
+    assert result["commit"]
+    assert _git(directory, "branch", "--show-current") == "main"
+    assert _git(directory, "status", "--porcelain") == ""
+    assert _git(directory, "show", "oc-001-example:sample.txt") == "implemented"
+    assert _git(directory, "show", "oc-001-example:new-file.txt") == "new file"
+    ticket = store.get_ticket("OC-001")
+    assert ticket["state"] == "in_progress"
+    assert f"Working branch finalized" in ticket["body"]
+    assert f"commit={result['commit']}" in ticket["body"]
+
+
+def test_finish_clean_working_branch_switches_without_empty_commit(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    before = _git(directory, "rev-parse", "HEAD")
+
+    result = store.finish_working_branch("OC-001")
+
+    assert result["committed"] is False
+    assert result["commit"] is None
+    assert _git(directory, "branch", "--show-current") == "main"
+    assert _git(directory, "rev-parse", "oc-001-example") == before
+
+
+def test_finish_working_branch_refuses_unexpected_current_branch(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    _git(directory, "switch", "-c", "unrelated")
+    (directory / "sample.txt").write_text("preserve\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected it to be checked out, found unrelated"):
+        store.finish_working_branch("OC-001")
+
+    assert _git(directory, "branch", "--show-current") == "unrelated"
+    assert _git(directory, "status", "--porcelain") == "M sample.txt"
+    assert _git(directory, "show", "main:sample.txt") == "base"
+
+
+def test_finish_working_branch_is_idempotent_after_switch_to_target(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    store.create_working_branch("OC-001")
+    store.finish_working_branch("OC-001")
+
+    result = store.finish_working_branch("OC-001")
+
+    assert result["already_finished"] is True
+    assert result["committed"] is False
+    assert _git(directory, "branch", "--show-current") == "main"
 
 
 def test_user_test_transition_merges_before_recording_test_and_can_close(tmp_path):

@@ -88,12 +88,18 @@ agent before the queue is considered ready for implementation.
 	its ID to the Outdoor Ticket Coder in a fresh
 	context. The coder implements only that ticket and returns its outcome,
 	changed files, validation, and blockers.
-5. On successful completion, use `update_ticket` to record the change and
-	detailed review documentation, then transition the ticket to `review` with
-	implementation and validation evidence. Do not close it. If work is
-	blocked, transition it to `blocked` with the blocker evidence. If the coder
-	fails or does not start, leave the ticket `in_progress` and report why.
-6. Do not implement or automatically advance `new`, `refined`, `review`, or
+5. On successful coder completion, call `finish_working_branch` before recording
+	the ticket as ready for review. The operation commits pending changes on the
+	recorded working branch, then checks out the recorded target branch without
+	merging. Do not update the ticket to `review` unless cleanup succeeds. If cleanup
+	fails, surface the tool error, leave the ticket `in_progress`, and do not claim
+	the worktree was cleaned up.
+6. After successful cleanup, use `update_ticket` to record the change and detailed
+	review documentation, then transition the ticket to `review` with implementation,
+	cleanup, and validation evidence. Do not close it. If coding is blocked, transition
+	it to `blocked` with the blocker evidence. If the coder fails or does not start,
+	leave it `in_progress` and report why.
+7. Do not implement or automatically advance `new`, `refined`, `review`, or
 	`blocked` tickets. Review comments and readiness decisions remain manual.
 
 ### 4. User-requested closure and testing

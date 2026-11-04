@@ -350,6 +350,45 @@ class TicketStore:
             self._atomic_write(path, self._serialize(metadata, body))
         return {"id": metadata["id"], **result}
 
+    def finish_working_branch(self, ticket_id: str) -> dict:
+        if self.repository_store is None:
+            raise ValueError("Git branch operations are unavailable")
+        with self._lock:
+            path = self._find_ticket_path(ticket_id)
+            errors, metadata, body = self._validate_file(path)
+            if errors:
+                raise ValueError("cannot finish branch for invalid ticket: " + "; ".join(errors))
+            if metadata["state"] != "in_progress":
+                raise ValueError("working branches can only be finished for in_progress tickets")
+            repository = self._selected_repository(metadata)
+            result = self.repository_store.finish_working_branch(
+                repository, metadata["working_branch"], metadata["target_branch"]
+            )
+            if result["committed"]:
+                evidence = (
+                    f"Working branch finalized: repository={result['repository']}, "
+                    f"working_branch={result['working_branch']}, "
+                    f"target_branch={result['target_branch']}, "
+                    f"commit={result['commit']}."
+                )
+            elif result.get("already_finished"):
+                evidence = (
+                    f"Working branch cleanup already completed: repository={result['repository']}, "
+                    f"working_branch={result['working_branch']}, "
+                    f"target_branch={result['target_branch']}."
+                )
+            else:
+                evidence = (
+                    f"Working branch finalized with no changes to commit: "
+                    f"repository={result['repository']}, "
+                    f"working_branch={result['working_branch']}, "
+                    f"target_branch={result['target_branch']}."
+                )
+            body = self._append_history_event(body, metadata["state"], evidence)
+            metadata["updated"] = date.today().isoformat()
+            self._atomic_write(path, self._serialize(metadata, body))
+        return {"id": metadata["id"], **result}
+
     def _selected_repository(self, metadata: dict) -> dict:
         missing = REPOSITORY_METADATA - metadata.keys()
         if missing:

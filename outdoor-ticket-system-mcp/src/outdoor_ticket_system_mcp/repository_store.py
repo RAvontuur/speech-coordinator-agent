@@ -176,6 +176,79 @@ class RepositoryStore:
             "created": created,
         }
 
+    def finish_working_branch(
+        self, repository: dict, working_branch: str, target_branch: str
+    ) -> dict:
+        directory = self._git_directory(repository)
+        working_branch = self._validate_branch(directory, working_branch)
+        target_branch = self._validate_branch(directory, target_branch)
+        if working_branch == target_branch:
+            raise ValueError("working branch and target branch must be different")
+
+        current_branch = self._run_git(
+            directory, "branch", "--show-current", action="inspect current branch"
+        ).stdout.strip()
+        if not self._branch_exists(directory, target_branch):
+            raise ValueError(f"target branch does not exist: {target_branch}")
+
+        if current_branch == target_branch:
+            status = self._run_git(
+                directory, "status", "--porcelain", action="inspect worktree"
+            )
+            if status.stdout.strip():
+                raise ValueError(f"Git worktree is not clean on target branch: {directory}")
+            return {
+                "repository": repository["name"],
+                "working_branch": working_branch,
+                "target_branch": target_branch,
+                "local_directory": str(directory),
+                "committed": False,
+                "commit": None,
+                "already_finished": True,
+            }
+        if current_branch != working_branch:
+            raise ValueError(
+                f"cannot finish ticket branch {working_branch}: "
+                f"expected it to be checked out, found {current_branch or 'detached HEAD'}"
+            )
+
+        status = self._run_git(
+            directory, "status", "--porcelain", action="inspect worktree"
+        )
+        commit_hash = None
+        if status.stdout.strip():
+            self._run_git(directory, "add", "--all", action="stage worktree changes")
+            staged = subprocess.run(
+                ["git", "-C", str(directory), "diff", "--cached", "--quiet"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if staged.returncode not in {0, 1}:
+                detail = staged.stderr.strip() or staged.stdout.strip() or "unknown Git error"
+                raise ValueError(f"could not inspect staged changes: {detail}")
+            if staged.returncode == 1:
+                self._run_git(
+                    directory,
+                    "commit",
+                    "-m",
+                    f"Save changes on {working_branch} after ticket implementation",
+                    action=f"commit changes on working branch {working_branch}",
+                )
+                commit_hash = self._run_git(
+                    directory, "rev-parse", "HEAD", action="record commit"
+                ).stdout.strip()
+
+        self._run_git(directory, "switch", target_branch, action="switch to target branch")
+        return {
+            "repository": repository["name"],
+            "working_branch": working_branch,
+            "target_branch": target_branch,
+            "local_directory": str(directory),
+            "committed": commit_hash is not None,
+            "commit": commit_hash,
+        }
+
     def merge_working_branch(
         self, repository: dict, working_branch: str, target_branch: str
     ) -> dict:
