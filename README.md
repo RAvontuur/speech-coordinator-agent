@@ -84,7 +84,9 @@ The repository wrapper also starts the same server:
   `.stt.wav` files for an annotation recording.
 - `process_plan_annotations(plan_path)` transcribes attached recordings when
   needed and returns each annotation's combined transcript with its sentence
-  text and `source_file` Git URL, including any bookmark.
+  text, `source_file` Git URL, stable `<plan name>-<number>` anchor, and an
+  `audioannotation://` URL that navigates to that annotation in the iOS app
+  when its plan package is open.
 - `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's
   text response. It uses `OPENAI_MODEL` when `model` is omitted (default
   `gpt-4o-mini`) and requires `OPENAI_API_KEY` in the MCP server environment.

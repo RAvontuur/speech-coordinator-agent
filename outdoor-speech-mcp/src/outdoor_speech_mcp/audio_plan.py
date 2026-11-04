@@ -11,6 +11,7 @@ import wave
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from .annotation_bookmarks import assign_annotation_bookmarks
 from .path_utils import normalize_path
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,7 @@ def create_audio_plan(source_path, speech_service, text_transformer, output_dir=
         raise ValueError("file has no speakable text")
     plan_id = source.stem[:-7] if source.stem.endswith(".prompt") else source.stem
     package = normalize_path(output_dir) if output_dir else source.parent / plan_id
+    plan_name = package.name
     logger.info("Creating audio plan package: %s", package)
     package.mkdir(parents=True, exist_ok=True)
     (package / "audio").mkdir(exist_ok=True)
@@ -260,7 +262,15 @@ def create_audio_plan(source_path, speech_service, text_transformer, output_dir=
                 record.update(start_sample=start, end_sample=end, start_seconds=start / sample_rate, end_seconds=end / sample_rate)
         shutil.copyfile(temp_audio, audio_path)
     manifest = {"schema_version": 1, "plan_id": plan_id, "audio_generation": generation, "source_file": str(source), "text_file": "plan.tts.txt", "audio_file": "plan.wav", "text_sha256": _sha256(text_path), "audio_sha256": _sha256(audio_path), "sample_rate_hz": sample_rate, "channels": channels, "duration_seconds": records[-1]["end_seconds"], "sentences": records}
-    annotations = {"schema_version": 1, "plan_id": plan_id, "audio_generation": generation, "manifest_file": "plan.timing.json", "annotations": []}
+    annotations_path = package / "annotations.json"
+    if annotations_path.is_file():
+        annotations = json.loads(annotations_path.read_text(encoding="utf-8"))
+    else:
+        annotations = {"schema_version": 1, "plan_id": plan_id, "annotations": []}
+    annotations["plan_id"] = annotations.get("plan_id") or plan_id
+    annotations["audio_generation"] = generation
+    annotations["manifest_file"] = "plan.timing.json"
+    assign_annotation_bookmarks(annotations, plan_name)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     annotations_path.write_text(json.dumps(annotations, indent=2) + "\n", encoding="utf-8")
     return {"package_dir": str(package), "source_file": str(source), "text_file": str(text_path), "audio_file": str(audio_path), "manifest_file": str(manifest_path), "annotations_file": str(annotations_path), "manifest": manifest}

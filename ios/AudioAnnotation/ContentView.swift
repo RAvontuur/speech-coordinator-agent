@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var errorMessage: String?
     @State private var packageFolder: URL?
     @State private var selectedAnnotationID: String?
+    @State private var pendingAnnotationAnchor: String?
     @State private var recordingReply = false
     @State private var expandedAnnotationIDs: Set<String> = []
 
@@ -45,6 +46,17 @@ struct ContentView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .onOpenURL { url in
+                guard url.scheme == "audioannotation",
+                      url.host == "annotation",
+                      let anchor = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment else {
+                    return
+                }
+                pendingAnnotationAnchor = anchor
+                if manifest == nil {
+                    errorMessage = "Open the matching plan package to navigate to \(anchor)."
+                }
+            }
         }
     }
 
@@ -57,70 +69,96 @@ struct ContentView: View {
     }
 
     private func playerView(_ manifest: TimingManifest) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(currentSentence(in: manifest)?.text ?? "Ready to play")
-                    .font(.title3.weight(.medium))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(currentSentence(in: manifest)?.text ?? "Ready to play")
+                        .font(.title3.weight(.medium))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
 
-                sourceLocationPanel(manifest)
+                    sourceLocationPanel(manifest)
 
-                VStack(spacing: 8) {
-                    Slider(value: Binding(
-                        get: { audioPlayer.currentTime },
-                        set: { audioPlayer.seek(to: $0) }
-                    ), in: 0...max(audioPlayer.duration, 1))
-                    HStack {
-                        Text(formatTime(audioPlayer.currentTime))
-                        Spacer()
-                        Text(formatTime(audioPlayer.duration))
+                    VStack(spacing: 8) {
+                        Slider(value: Binding(
+                            get: { audioPlayer.currentTime },
+                            set: { audioPlayer.seek(to: $0) }
+                        ), in: 0...max(audioPlayer.duration, 1))
+                        HStack {
+                            Text(formatTime(audioPlayer.currentTime))
+                            Spacer()
+                            Text(formatTime(audioPlayer.duration))
+                        }
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
                     }
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                }
 
-                HStack(spacing: 24) {
-                    Button("Back 10", systemImage: "gobackward.10") {
-                        audioPlayer.seek(by: -10)
+                    HStack(spacing: 24) {
+                        Button("Back 10", systemImage: "gobackward.10") {
+                            audioPlayer.seek(by: -10)
+                        }
+                        Button {
+                            annotationPlayback.stop()
+                            audioPlayer.togglePlayback()
+                        } label: {
+                            Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                .font(.system(size: 48))
+                        }
+                        .accessibilityLabel(audioPlayer.isPlaying ? "Pause" : "Play")
+                        Button("Forward 10", systemImage: "goforward.10") {
+                            audioPlayer.seek(by: 10)
+                        }
                     }
-                    Button {
-                        annotationPlayback.stop()
-                        audioPlayer.togglePlayback()
-                    } label: {
-                        Image(systemName: audioPlayer.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                            .font(.system(size: 48))
-                    }
-                    .accessibilityLabel(audioPlayer.isPlaying ? "Pause" : "Play")
-                    Button("Forward 10", systemImage: "goforward.10") {
-                        audioPlayer.seek(by: 10)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-
-                if annotationRecorder.isRecording {
-                    recordingControls
-                } else {
-                    Button("Record annotation", systemImage: "mic.circle.fill") {
-                        beginRecording(replyTo: nil)
-                    }
-                    .buttonStyle(.borderedProminent)
                     .frame(maxWidth: .infinity)
-                }
 
-                Picker("Speech rate", selection: $selectedRate) {
-                    Text("0.75x").tag(Float(0.75))
-                    Text("1x").tag(Float(1.0))
-                    Text("1.25x").tag(Float(1.25))
-                    Text("1.5x").tag(Float(1.5))
-                }
-                .pickerStyle(.segmented)
-                .onChange(of: selectedRate) { _, rate in audioPlayer.setRate(rate) }
+                    if annotationRecorder.isRecording {
+                        recordingControls
+                    } else {
+                        Button("Record annotation", systemImage: "mic.circle.fill") {
+                            beginRecording(replyTo: nil)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                    }
 
-                annotationsView
+                    Picker("Speech rate", selection: $selectedRate) {
+                        Text("0.75x").tag(Float(0.75))
+                        Text("1x").tag(Float(1.0))
+                        Text("1.25x").tag(Float(1.25))
+                        Text("1.5x").tag(Float(1.5))
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: selectedRate) { _, rate in audioPlayer.setRate(rate) }
+                    annotationsView
+                }
+                .padding()
             }
-            .padding()
+            .onChange(of: pendingAnnotationAnchor) { _, anchor in
+                openPendingAnnotation(anchor, using: proxy)
+            }
+            .onAppear {
+                openPendingAnnotation(pendingAnnotationAnchor, using: proxy)
+            }
+            .onChange(of: annotations.map(\.id)) { _, _ in
+                openPendingAnnotation(pendingAnnotationAnchor, using: proxy)
+            }
+        }
+    }
+
+    private func openPendingAnnotation(_ anchor: String?, using proxy: ScrollViewProxy) {
+        guard let anchor,
+              let annotation = annotations.first(where: { annotation in
+                  annotation.anchor == anchor ||
+                      (annotation.annotationNumber.map { "\(annotationDocument.planName ?? annotationDocument.planID ?? "")-\($0)" } == anchor)
+              }) else {
+            return
+        }
+        selectedAnnotationID = annotation.id
+        expandedAnnotationIDs.insert(annotation.id)
+        pendingAnnotationAnchor = nil
+        withAnimation {
+            proxy.scrollTo(annotation.id, anchor: .center)
         }
     }
 
@@ -132,6 +170,7 @@ struct ContentView: View {
                     .font(.headline)
                 ForEach(Array(annotations.enumerated()), id: \.offset) { _, annotation in
                     annotationRow(annotation)
+                        .id(annotation.id)
                 }
             }
         }
@@ -276,6 +315,8 @@ struct ContentView: View {
                 guard let index = annotations.firstIndex(where: { $0.id == annotation.id }) else { return }
                 annotations[index] = Annotation(
                     annotationID: annotation.annotationID,
+                    annotationNumber: annotation.annotationNumber,
+                    anchor: annotation.anchor,
                     sentenceID: annotation.sentenceID,
                     timestampSeconds: annotation.timestampSeconds,
                     annotationText: annotation.annotationText,
@@ -283,8 +324,12 @@ struct ContentView: View {
                 )
             } else {
                 let sentenceID = currentSentence(in: manifest)?.sentenceID
+                let planName = annotationDocument.planName ?? annotationDocument.planID ?? manifest.planID
+                let nextNumber = (annotations.compactMap(\.annotationNumber).max() ?? 0) + 1
                 let newAnnotation = Annotation(
                     annotationID: "a-\(UUID().uuidString)",
+                    annotationNumber: nextNumber,
+                    anchor: "\(planName)-\(nextNumber)",
                     sentenceID: sentenceID,
                     timestampSeconds: audioPlayer.currentTime,
                     annotationText: nil,
@@ -296,6 +341,7 @@ struct ContentView: View {
             annotationDocument = AnnotationDocument(
                 schemaVersion: annotationDocument.schemaVersion,
                 planID: annotationDocument.planID ?? manifest.planID,
+                planName: annotationDocument.planName ?? manifest.planID,
                 audioGeneration: annotationDocument.audioGeneration,
                 manifestFile: annotationDocument.manifestFile ?? "plan.timing.json",
                 annotations: annotations
@@ -415,6 +461,8 @@ struct ContentView: View {
         let remainingFiles = annotation.audioFiles.filter { $0.id != recording.id }
         annotations[annotationIndex] = Annotation(
             annotationID: annotation.annotationID,
+            annotationNumber: annotation.annotationNumber,
+            anchor: annotation.anchor,
             sentenceID: annotation.sentenceID,
             timestampSeconds: annotation.timestampSeconds,
             annotationText: annotation.annotationText,

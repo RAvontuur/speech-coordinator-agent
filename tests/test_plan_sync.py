@@ -1,3 +1,4 @@
+import json
 import wave
 from pathlib import Path
 
@@ -260,6 +261,63 @@ def test_create_audio_plan_maps_ticket_anchors_to_sentence_sources(tmp_path):
         "plans/Sprint%20Review%203/plan.md#oc-005",
         "https://github.com/Acme/speech-coordinator-agent/blob/main/"
         "plans/Sprint%20Review%203/plan.md#oc-006",
+    ]
+
+
+def test_audio_plan_regeneration_preserves_and_allocates_annotation_bookmarks(tmp_path):
+    plan_dir = tmp_path / "Sprint Review 15"
+    plan_dir.mkdir()
+    source = plan_dir / "plan.md"
+    source.write_text("A plan sentence.", encoding="utf-8")
+    annotations_path = plan_dir / "annotations.json"
+    annotations_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "plan_id": "plan",
+                "annotations": [
+                    {"annotation_id": "older", "annotation_number": 12, "audio_files": []},
+                    {"annotation_id": "newer", "annotation_number": 3, "audio_files": []},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class DummySpeechService:
+        def text_to_speech_file(self, text, output_path):
+            with wave.open(output_path, "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(8000)
+                wav.writeframes(b"\x00\x00" * 4)
+
+    class DummyTextTransformer:
+        def transform_file_to_tts_text(self, filename, content):
+            return content
+
+    def regenerate():
+        return create_audio_plan(
+            str(source), DummySpeechService(), DummyTextTransformer(), output_dir=str(plan_dir)
+        )
+
+    regenerate()
+    first = json.loads(annotations_path.read_text(encoding="utf-8"))
+    assert first["plan_name"] == "Sprint Review 15"
+    assert [(item["annotation_id"], item["annotation_number"], item["anchor"]) for item in first["annotations"]] == [
+        ("older", 12, "Sprint Review 15-12"),
+        ("newer", 3, "Sprint Review 15-3"),
+    ]
+
+    first["annotations"].reverse()
+    first["annotations"].insert(0, {"annotation_id": "appended", "audio_files": []})
+    annotations_path.write_text(json.dumps(first), encoding="utf-8")
+    regenerate()
+    second = json.loads(annotations_path.read_text(encoding="utf-8"))
+    assert [(item["annotation_id"], item["annotation_number"], item["anchor"]) for item in second["annotations"]] == [
+        ("appended", 13, "Sprint Review 15-13"),
+        ("newer", 3, "Sprint Review 15-3"),
+        ("older", 12, "Sprint Review 15-12"),
     ]
 
 
