@@ -340,11 +340,18 @@ class TicketStore:
             result = self.repository_store.create_working_branch(
                 repository, metadata["working_branch"], metadata["target_branch"]
             )
+            switch_details = ""
+            if result.get("committed"):
+                switch_details = (
+                    f" Previous branch {result['previous_branch']} changes were committed as "
+                    f"{result['commit']} before switching to {result['target_branch']}."
+                )
             body = self._append_history_event(
                 body, metadata["state"],
                 ("Working branch created: " if result["created"] else "Existing working branch resumed: ")
                 + f"repository={result['repository']}, working_branch={result['working_branch']}, "
-                f"target_branch={result['target_branch']}.",
+                f"target_branch={result['target_branch']}."
+                + switch_details,
             )
             metadata["updated"] = date.today().isoformat()
             self._atomic_write(path, self._serialize(metadata, body))
