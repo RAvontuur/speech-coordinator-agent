@@ -138,3 +138,107 @@ The speech MCP owns plan synchronization through `next_plan_name`,
 the former `plan_sync.py` command-line helpers. Import/export use
 `ACTIVE_AUDIO_PLAN` and local `plans/` directories. The speech MCP requires
 `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY`.
+
+## Project architecture
+
+The repository's two local MCP servers are configured for the VS Code MCP
+client. The dispatcher coordinates their tools and delegates ticket coding and
+refinement; ticket records and local Sprint Review plans remain in this
+workspace.
+
+```mermaid
+flowchart LR
+    client["VS Code MCP client"]
+    config[".vscode/mcp.json"]
+    dispatcher["Outdoor Ticket Dispatcher"]
+    coder["Outdoor Ticket Coder"]
+    refinement["Outdoor Refinement"]
+    ticket_mcp["outdoor-ticket-system-mcp"]
+    ticket_files["tickets/<br/>ticket records, schema, repository registry"]
+    speech_mcp["outdoor-speech-mcp"]
+    plans["plans/<br/>local Sprint Review packages"]
+    active["ACTIVE_AUDIO_PLAN<br/>configured active package"]
+
+    client -->|loads server commands from| config
+    config -->|launches| ticket_mcp
+    config -->|launches| speech_mcp
+    dispatcher -->|uses ticket tools| ticket_mcp
+    dispatcher -->|uses audio-plan tools| speech_mcp
+    dispatcher -->|delegates implementation| coder
+    dispatcher -->|delegates flagged-ticket refinement| refinement
+    ticket_mcp -->|validates and manages| ticket_files
+    speech_mcp -->|imports, exports, and creates plans in| plans
+    speech_mcp -->|imports from and exports to| active
+    speech_mcp -->|transcribes annotations for dispatcher| dispatcher
+    ticket_mcp -->|generates Sprint Review ticket Markdown| dispatcher
+```
+
+See the [dispatcher instructions](.github/agents/outdoor-ticket-dispatcher.agent.md),
+[ticket-management skill](skills/ticket-management/SKILL.md),
+[ticket schema](tickets/README.md), and [MCP configuration](.vscode/mcp.json).
+
+## Outdoor Ticket Dispatcher workflow
+
+The diagram follows the dispatcher instructions. Annotation and import failures
+stop processing before ticket dispatch; an empty ready queue still proceeds to
+the Sprint Review plan. The user-controlled review/testing path is separate
+from the normal dispatch cycle.
+
+```mermaid
+flowchart TD
+    start([Start]) --> latest["Find latest local Sprint Review plan"]
+    latest --> exists{"Plan exists?"}
+    exists -->|No| baseline["Report that a baseline plan is needed; stop"]
+    exists -->|Yes| import["Import active plan"]
+    import --> imported{"Import succeeds?"}
+    imported -->|No| import_error["Report exact error; stop"]
+    imported -->|Yes| annotations["Process plan annotations"]
+    annotations --> any_annotations{"Annotations returned?"}
+    any_annotations -->|No| none["Tell user; stop before ticket dispatch"]
+    any_annotations -->|Yes| match["Match notes to tickets; update or create tickets"]
+    match --> inspect["Inspect all open tickets and readiness"]
+    inspect --> gaps{"Refinement gaps or missing routing?"}
+    gaps -->|Yes| refine["Refine flagged tickets"]
+    refine --> recheck{"Any readiness or routing gaps remain?"}
+    recheck -->|Yes| exclude["Keep ticket out of ready queue; record and report blocker"]
+    recheck -->|No| ready["List ready tickets"]
+    exclude --> ready
+    gaps -->|No| ready
+    ready --> has_ready{"Ready tickets?"}
+    has_ready -->|No| plan_dir["Create next Sprint Review directory"]
+    has_ready -->|Yes| dependency["Process ready tickets one at a time, respecting dependencies"]
+    dependency --> progress["Move ticket to in_progress"]
+    progress --> branch["Create or resume working branch from target"]
+    branch --> branch_ok{"Branch creation succeeds?"}
+    branch_ok -->|No| no_dispatch["Do not dispatch coder; report failure"]
+    branch_ok -->|Yes| coding["Dispatch Outdoor Ticket Coder"]
+    coding --> result{"Coder outcome?"}
+    result -->|Blocked| blocked["Move ticket to blocked with evidence"]
+    result -->|Failed or did not start| in_progress["Leave ticket in_progress; report why"]
+    result -->|Successful| finish["Finish working branch; return to target"]
+    finish --> cleanup{"Cleanup succeeds?"}
+    cleanup -->|No| cleanup_error["Leave ticket in_progress; report error"]
+    cleanup -->|Yes| review["Record changes and review documentation; move to review"]
+    no_dispatch --> next_ticket{"More ready tickets?"}
+    blocked --> next_ticket
+    in_progress --> next_ticket
+    cleanup_error --> next_ticket
+    review --> next_ticket
+    next_ticket -->|Yes| dependency
+    next_ticket -->|No| plan_dir
+    plan_dir --> ticket_plan["Generate Markdown for all non-closed tickets"]
+    ticket_plan --> write["Write plan.md with annotation record first"]
+    write --> synthesize["Synthesize audio plan and verify generated package"]
+    synthesize --> export["Export plan to configured active destination"]
+    export --> done([Report paths and remaining blockers])
+
+    review -. "only on explicit user request" .-> accept{"User requests review acceptance?"}
+    accept -->|Yes| merge["Transition to test; service merges into target"]
+    accept -->|No| wait["Keep in review; await user"]
+    merge --> merged{"Merge succeeds?"}
+    merged -->|No| merge_error["Report exact merge error; remain in review"]
+    merged -->|Yes| test["User-controlled testing"]
+    test --> close_request{"User explicitly accepts closure?"}
+    close_request -->|Yes| closed["Close with decision evidence"]
+    close_request -->|No| wait_test["Remain in test; await user"]
+```
