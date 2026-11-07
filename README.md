@@ -174,7 +174,6 @@ flowchart LR
 ```
 
 See the [dispatcher instructions](.github/agents/outdoor-ticket-dispatcher.agent.md),
-[ticket-management skill](skills/ticket-management/SKILL.md),
 [ticket schema](tickets/README.md), and [MCP configuration](.vscode/mcp.json).
 
 ## Outdoor Ticket Dispatcher workflow
