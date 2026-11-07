@@ -11,6 +11,30 @@ local process rather than connecting to an HTTP server.
 - An OpenAI API key to use `ask_llm` and synthesize audio plans
 - `ffmpeg` on `PATH` for M4A transcription
 
+## Azure Speech connection requirements
+
+By default, the Speech SDK uses the configured Azure region. Speech recognition
+connects to `wss://<region>.stt.speech.microsoft.com` and speech synthesis to
+`wss://<region>.tts.speech.microsoft.com`. These are secure WebSocket
+connections (TLS) over outbound TCP port 443. Allow DNS resolution and outbound
+connections on port 443; no inbound ports are required. The endpoints' IP
+addresses can change, so allow the service hostnames rather than fixed IPs.
+
+To use a private endpoint, configure a custom domain and private endpoint for
+the Azure Speech resource, and make sure the client network's private DNS
+resolves the custom domain to the private endpoint IP. Set
+`AZURE_SPEECH_ENDPOINT` to the custom endpoint URL shown for the Speech
+resource, for example `https://<custom-name>.cognitiveservices.azure.com/`.
+The SDK uses this endpoint instead of the region; keep `AZURE_SPEECH_KEY` set,
+and `AZURE_SPEECH_REGION` is not needed when the endpoint is set. The client
+still needs outbound TCP port 443 to the endpoint. Do not configure the private
+IP directly as the endpoint; use the DNS name so TLS and private DNS work as
+intended.
+
+Creating a custom domain for a Speech resource is not reversible. See
+[Microsoft's Speech private endpoint instructions](https://learn.microsoft.com/azure/ai-services/speech-service/speech-services-private-link)
+for setup and DNS details.
+
 ## Install
 
 ```bash
@@ -25,6 +49,8 @@ loads this file for `outdoor-speech-mcp` through `.vscode/mcp.json`. The root
 ```env
 AZURE_SPEECH_KEY=your_speech_key_here
 AZURE_SPEECH_REGION=your_region_here
+# Optional: set this instead of AZURE_SPEECH_REGION when using a custom endpoint/private endpoint.
+# AZURE_SPEECH_ENDPOINT=https://<custom-name>.cognitiveservices.azure.com/
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
 LOG_FILE=/path/to/outdoor-speech-mcp.log
@@ -56,6 +82,10 @@ Use the installed console script as the local MCP command:
   }
 }
 ```
+
+For a private endpoint, add `AZURE_SPEECH_ENDPOINT` with the custom endpoint
+URL to the `env` object. When it is set, the service uses it instead of
+`AZURE_SPEECH_REGION`.
 
 The repository wrapper also starts the same server:
 
@@ -107,8 +137,9 @@ VS Code discovers both MCP servers through `.vscode/mcp.json`. Ticket records
 remain under `tickets/`; set `OUTDOOR_TICKET_ROOT` to override that location.
 The speech server loads its credentials and optional settings from the
 git-ignored repository-root `.env` file using VS Code's `envFile` setting.
-Set `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY` there;
-`OPENAI_MODEL` is optional.
+Set `AZURE_SPEECH_KEY`, either `AZURE_SPEECH_REGION` or
+`AZURE_SPEECH_ENDPOINT`, and `OPENAI_API_KEY` there; `OPENAI_MODEL` is
+optional.
 The service requires the schema in `tickets/README.md` and never creates a
 parallel ticket store. Ticket mutations preserve append-only history and use
 the documented state graph, including user-controlled `test` after `review`.
@@ -137,7 +168,8 @@ The speech MCP owns plan synchronization through `next_plan_name`,
 `create_next_plan_dir`, `import_plan`, and `export_plan`. These tools replace
 the former `plan_sync.py` command-line helpers. Import/export use
 `ACTIVE_AUDIO_PLAN` and local `plans/` directories. The speech MCP requires
-`AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION`, and `OPENAI_API_KEY`.
+`AZURE_SPEECH_KEY`, either `AZURE_SPEECH_REGION` or `AZURE_SPEECH_ENDPOINT`,
+and `OPENAI_API_KEY`.
 
 ## Project architecture
 

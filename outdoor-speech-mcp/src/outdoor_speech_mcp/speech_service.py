@@ -12,6 +12,7 @@ from .path_utils import normalize_path
 for variable in (
     "AZURE_SPEECH_KEY",
     "AZURE_SPEECH_REGION",
+    "AZURE_SPEECH_ENDPOINT",
     "OPENAI_API_KEY",
     "OPENAI_MODEL",
 ):
@@ -29,10 +30,18 @@ logger = logging.getLogger(__name__)
 class SpeechService:
     def __init__(self):
         logger.info("Initializing Speech Service")
-        self.speech_config = speechsdk.SpeechConfig(
-            subscription=os.getenv("AZURE_SPEECH_KEY"),
-            region=os.getenv("AZURE_SPEECH_REGION"),
-        )
+        subscription = os.getenv("AZURE_SPEECH_KEY")
+        endpoint = os.getenv("AZURE_SPEECH_ENDPOINT")
+        if endpoint:
+            self.speech_config = speechsdk.SpeechConfig(
+                subscription=subscription,
+                endpoint=endpoint,
+            )
+        else:
+            self.speech_config = speechsdk.SpeechConfig(
+                subscription=subscription,
+                region=os.getenv("AZURE_SPEECH_REGION"),
+            )
 
     def listen(self):
         audio = speechsdk.audio.AudioConfig(use_default_microphone=True)
