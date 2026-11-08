@@ -151,9 +151,10 @@ class RepositoryStore:
         target_branch = self._validate_branch(directory, target_branch)
         if working_branch == target_branch:
             raise ValueError("working branch and target branch must be different")
-        self._require_clean_worktree(directory)
         if not self._branch_exists(directory, target_branch):
             raise ValueError(f"target branch does not exist: {target_branch}")
+        committed_changes = self._commit_changes_before_switch(directory, target_branch)
+        self._run_git(directory, "switch", target_branch, action="switch to target branch")
         created = not self._branch_exists(directory, working_branch)
         if not created:
             self._run_git(
@@ -174,6 +175,7 @@ class RepositoryStore:
             "target_branch": target_branch,
             "local_directory": str(directory),
             "created": created,
+            **committed_changes,
         }
 
     def finish_working_branch(
@@ -333,6 +335,43 @@ class RepositoryStore:
         result = cls._run_git(directory, "status", "--porcelain", action="inspect worktree")
         if result.stdout.strip():
             raise ValueError(f"Git worktree is not clean: {directory}")
+
+    @classmethod
+    def _commit_changes_before_switch(cls, directory: Path, target_branch: str) -> dict:
+        current_branch = cls._run_git(
+            directory, "branch", "--show-current", action="inspect current branch"
+        ).stdout.strip()
+        if not current_branch:
+            raise ValueError(
+                f"cannot save worktree changes before switching to {target_branch}: "
+                "repository is in detached HEAD state"
+            )
+        status = cls._run_git(directory, "status", "--porcelain", action="inspect worktree")
+        if not status.stdout.strip():
+            return {"previous_branch": current_branch, "committed": False}
+        if current_branch == target_branch:
+            raise ValueError(
+                f"cannot automatically commit worktree changes on target branch "
+                f"{target_branch}; switch to the intended working branch first"
+            )
+
+        cls._run_git(directory, "add", "--all", action="stage worktree changes")
+        commit = cls._run_git(
+            directory,
+            "commit",
+            "-m",
+            f"Save changes on {current_branch} before switching to {target_branch}",
+            action=f"commit changes on working branch {current_branch}",
+        )
+        commit_hash = cls._run_git(
+            directory, "rev-parse", "HEAD", action="record commit"
+        ).stdout.strip()
+        return {
+            "previous_branch": current_branch,
+            "committed": True,
+            "commit": commit_hash,
+            "commit_summary": commit.stdout.strip(),
+        }
 
     @staticmethod
     def _run_git(directory: Path, *arguments: str, action: str) -> subprocess.CompletedProcess:

@@ -639,6 +639,58 @@ def test_finish_working_branch_is_idempotent_after_switch_to_target(tmp_path):
     assert _git(directory, "branch", "--show-current") == "main"
 
 
+def test_dirty_working_branch_is_committed_before_switching_to_target(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-first")
+    store.create_working_branch("OC-001")
+    (directory / "sample.txt").write_text("unfinished work\n", encoding="utf-8")
+    _git(directory, "add", "sample.txt")
+    (directory / "new-file.txt").write_text("new work\n", encoding="utf-8")
+
+    store.select_ticket_repository("OC-001", "example", "oc-001-next")
+    result = store.create_working_branch("OC-001")
+
+    assert result["previous_branch"] == "oc-001-first"
+    assert result["committed"] is True
+    assert result["commit"]
+    assert _git(directory, "branch", "--show-current") == "oc-001-next"
+    assert _git(directory, "status", "--porcelain") == ""
+    assert _git(directory, "show", "oc-001-first:sample.txt") == "unfinished work"
+    assert _git(directory, "show", "oc-001-first:new-file.txt") == "new work"
+    assert _git(directory, "show", "-s", "--format=%s", result["commit"]) == (
+        "Save changes on oc-001-first before switching to main"
+    )
+    history = store.get_ticket("OC-001")["body"]
+    assert f"Previous branch oc-001-first changes were committed as {result['commit']}" in history
+
+
+def test_dirty_target_branch_is_not_automatically_committed(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    (directory / "sample.txt").write_text("target change\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot automatically commit.*target branch main"):
+        store.create_working_branch("OC-001")
+
+    assert _git(directory, "branch", "--show-current") == "main"
+    assert _git(directory, "status", "--porcelain") == "M sample.txt"
+    assert _git(directory, "show", "main:sample.txt") == "base"
+
+
+def test_detached_head_with_dirty_worktree_is_not_committed(tmp_path):
+    store, directory = _routed_ticket(tmp_path)
+    store.select_ticket_repository("OC-001", "example", "oc-001-example")
+    _git(directory, "checkout", "--detach")
+    (directory / "sample.txt").write_text("detached change\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="detached HEAD state"):
+        store.create_working_branch("OC-001")
+
+    assert not _git(directory, "branch", "--show-current")
+    assert _git(directory, "status", "--porcelain") == "M sample.txt"
+    assert _git(directory, "show", "main:sample.txt") == "base"
+
+
 def test_user_test_transition_merges_before_recording_test_and_can_close(tmp_path):
     store, directory = _routed_ticket(tmp_path)
     store.select_ticket_repository("OC-001", "example", "oc-001-example")

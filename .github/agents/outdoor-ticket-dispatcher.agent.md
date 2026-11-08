@@ -81,9 +81,13 @@ agent before the queue is considered ready for implementation.
 	to move the selected ticket to `in_progress`, with evidence that implementation is
 	starting.
 3. Immediately after the `in_progress` transition, call `create_working_branch` for
-	that ticket. Do not dispatch the coder unless branch creation succeeds. The tool
-	creates the working branch from the target branch and appends repository/branch
-	details to History.
+	that ticket. Do not dispatch the coder unless branch creation succeeds. If the
+	registered repository has uncommitted changes on a checked-out working branch,
+	the tool commits those changes on that branch, switches to the selected target
+	branch, then creates or resumes the ticket's working branch. It records any
+	automatic commit and repository/branch details in History. It must not
+	automatically commit changes while the target branch itself is checked out;
+	surface that error and preserve the worktree.
 4. Pass the full ticket, repository registration (including `local_directory`), and
 	its ID to the Outdoor Ticket Coder in a fresh
 	context. The coder implements only that ticket and returns its outcome,
