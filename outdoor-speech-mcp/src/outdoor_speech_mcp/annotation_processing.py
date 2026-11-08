@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+from urllib.parse import quote
 
+from .annotation_bookmarks import assign_annotation_bookmarks
 from .path_utils import normalize_path
 
 
@@ -18,6 +20,9 @@ def process_plan_annotations(plan_path, speech_service):
         raise FileNotFoundError(f"Timing manifest not found: {manifest_path}")
 
     annotation_document = json.loads(annotations_path.read_text(encoding="utf-8"))
+    plan_name = annotation_document.get("plan_name") or annotation_document.get("plan_id") or plan_dir.name
+    assign_annotation_bookmarks(annotation_document, plan_name)
+    annotations_path.write_text(json.dumps(annotation_document, indent=2) + "\n", encoding="utf-8")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     sentences = {
         sentence["sentence_id"]: sentence
@@ -44,6 +49,11 @@ def process_plan_annotations(plan_path, speech_service):
         processed.append(
             {
                 "annotation_id": annotation.get("annotation_id"),
+                "annotation_number": annotation["annotation_number"],
+                "anchor": annotation["anchor"],
+                "annotation_url": (
+                    f"audioannotation://annotation#{quote(annotation['anchor'], safe='-._~')}"
+                ),
                 "text": " ".join(transcripts),
                 "context": {
                     "sentence_id": sentence_id,

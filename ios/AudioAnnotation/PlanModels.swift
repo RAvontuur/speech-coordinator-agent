@@ -59,6 +59,8 @@ struct AnnotationFile: Codable, Identifiable {
 
 struct Annotation: Codable, Identifiable {
     let annotationID: String
+    let annotationNumber: Int?
+    let anchor: String?
     let sentenceID: String?
     let timestampSeconds: Double
     let annotationText: String?
@@ -68,6 +70,8 @@ struct Annotation: Codable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case annotationID = "annotation_id"
+        case annotationNumber = "annotation_number"
+        case anchor
         case sentenceID = "sentence_id"
         case timestampSeconds = "timestamp_seconds"
         case annotationText = "annotation_text"
@@ -78,6 +82,7 @@ struct Annotation: Codable, Identifiable {
 struct AnnotationDocument: Codable {
     let schemaVersion: Int
     let planID: String?
+    let planName: String?
     let audioGeneration: String?
     let manifestFile: String?
     var annotations: [Annotation]
@@ -85,14 +90,16 @@ struct AnnotationDocument: Codable {
     enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case planID = "plan_id"
+        case planName = "plan_name"
         case audioGeneration = "audio_generation"
         case manifestFile = "manifest_file"
         case annotations
     }
 
-    init(schemaVersion: Int = 1, planID: String? = nil, audioGeneration: String? = nil, manifestFile: String? = nil, annotations: [Annotation]) {
+    init(schemaVersion: Int = 1, planID: String? = nil, planName: String? = nil, audioGeneration: String? = nil, manifestFile: String? = nil, annotations: [Annotation]) {
         self.schemaVersion = schemaVersion
         self.planID = planID
+        self.planName = planName
         self.audioGeneration = audioGeneration
         self.manifestFile = manifestFile
         self.annotations = annotations
