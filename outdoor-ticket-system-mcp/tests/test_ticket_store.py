@@ -186,32 +186,30 @@ def test_create_update_and_transition_append_history(tmp_path):
         validation_approach="Run ticket service tests.",
         affected_area=["outdoor-ticket-system-mcp/"],
         creation_evidence="Requested directly by the user.",
-        plan_number=7,
     )
-    assert created["id"] == "P7-T1"
-    assert created["bookmark"] == "p7-t1"
-    assert created["get_url"].endswith("#p7-t1")
+    assert created["id"] == "OC-001"
+    assert created["state"] == "new"
 
-    store.update_ticket("P7-T1", {"Objective": "Expose local ticket operations."})
+    store.update_ticket("OC-001", {"Objective": "Expose local ticket operations."})
     with pytest.raises(ValueError, match="decision_evidence"):
-        store.transition_ticket("P7-T1", "ready", "Criteria are complete.")
+        store.transition_ticket("OC-001", "ready", "Criteria are complete.")
 
     store.transition_ticket(
-        "P7-T1", "ready", "Required fields are concrete.", "User approved readiness."
+        "OC-001", "ready", "Required fields are concrete.", "User approved readiness."
     )
-    store.transition_ticket("P7-T1", "in_progress", "Implementation started.")
-    store.transition_ticket("P7-T1", "review", "Focused tests passed.")
-    ticket = store.get_ticket("P7-T1")
+    store.transition_ticket("OC-001", "in_progress", "Implementation started.")
+    store.transition_ticket("OC-001", "review", "Focused tests passed.")
+    ticket = store.get_ticket("OC-001")
     assert ticket["state"] == "review"
     assert "Created through the ticket MCP" in ticket["body"]
     assert "User approved readiness." in ticket["body"]
     assert "Focused tests passed." in ticket["body"]
     with pytest.raises(ValueError, match="decision_evidence"):
-        store.transition_ticket("P7-T1", "closed", "Tests passed.")
-    store.transition_ticket("P7-T1", "closed", "User accepted.", "Accepted in review.")
+        store.transition_ticket("OC-001", "closed", "Tests passed.")
+    store.transition_ticket("OC-001", "closed", "User accepted.", "Accepted in review.")
 
     with pytest.raises(ValueError, match="non-editable fields: History"):
-        store.update_ticket("P7-T1", {"History": "rewritten"})
+        store.update_ticket("OC-001", {"History": "rewritten"})
 
 
 def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_transition(tmp_path):
@@ -224,29 +222,28 @@ def test_annotation_driven_ready_transition_keeps_history_and_rejects_invalid_tr
         validation_approach="Run the focused ticket transition tests.",
         affected_area=["tickets/"],
         creation_evidence="Requested by users during annotation review.",
-        plan_number=7,
     )
-    assert ticket["id"] == "P7-T1"
+    assert ticket["id"] == "OC-001"
 
     store.transition_ticket(
-        "P7-T1",
+        "OC-001",
         "ready",
         "Annotation requested state change to ready.",
         "User explicitly approved the ready state.",
     )
-    updated = store.get_ticket("P7-T1")
+    updated = store.get_ticket("OC-001")
     assert updated["state"] == "ready"
     assert "Annotation requested state change to ready." in updated["body"]
     assert "User explicitly approved the ready state." in updated["body"]
     assert "Created through the ticket MCP" in updated["body"]
 
     with pytest.raises(ValueError, match="not allowed"):
-        store.transition_ticket("P7-T1", "review", "Skip implementation.")
+        store.transition_ticket("OC-001", "review", "Skip implementation.")
 
     store.transition_ticket(
-        "P7-T1", "closed", "Close as requested.", "User requested closure."
+        "OC-001", "closed", "Close as requested.", "User requested closure."
     )
-    closed = store.get_ticket("P7-T1")
+    closed = store.get_ticket("OC-001")
     assert closed["state"] == "closed"
     assert "Close as requested." in closed["body"]
     assert "User requested closure." in closed["body"]
@@ -289,7 +286,7 @@ def test_invalid_non_cancellation_transitions_remain_rejected(tmp_path):
         store.transition_ticket("OC-001", "new", "Reopen ticket.")
 
 
-def test_ticket_identifiers_and_bookmarks_are_scoped_to_plan_order(tmp_path):
+def test_ticket_identifiers_increment_across_the_ticket_store(tmp_path):
     store = _store(tmp_path)
     common = {
         "ticket_type": "feature",
@@ -300,20 +297,18 @@ def test_ticket_identifiers_and_bookmarks_are_scoped_to_plan_order(tmp_path):
         "creation_evidence": "Requested for testing.",
     }
 
-    first = store.create_ticket(title="First plan seven", plan_number=7, **common)
-    second = store.create_ticket(title="Second plan seven", plan_number=7, **common)
+    first = store.create_ticket(title="First ticket", **common)
+    second = store.create_ticket(title="Second ticket", **common)
     for order_number in range(3, 11):
-        store.create_ticket(title=f"Plan seven ticket {order_number}", plan_number=7, **common)
-    other_plan = store.create_ticket(title="First plan eight", plan_number=8, **common)
+        store.create_ticket(title=f"Ticket {order_number}", **common)
+    last = store.create_ticket(title="Eleventh ticket", **common)
 
-    assert [first["id"], second["id"], other_plan["id"]] == ["P7-T1", "P7-T2", "P8-T1"]
-    assert store.get_ticket("P7-T2")["bookmark"] == "p7-t2"
-    assert store.get_ticket("P7-T2")["get_url"].endswith("#p7-t2")
-    assert '<a id="p7-t1"></a>' in Path(first["path"]).read_text(encoding="utf-8")
+    assert [first["id"], second["id"], last["id"]] == ["OC-001", "OC-002", "OC-011"]
+    assert store.get_ticket("OC-002")["id"] == "OC-002"
     plan = store.list_tickets(file_format="markdown")
-    assert '<a id="p7-t1"></a>' in plan
-    assert "## P7-T1: First plan seven" in plan
-    assert plan.index("## P7-T9:") < plan.index("## P7-T10:")
+    assert '<a id="oc-001"></a>' in plan
+    assert "## OC-001: First ticket" in plan
+    assert "## OC-011: Eleventh ticket" in plan
 
 
 def test_ready_transition_requires_concrete_fields(tmp_path):

@@ -7,7 +7,7 @@ from outdoor_speech_mcp.llm_service import LLMService
 
 
 def test_ask_uses_configured_model_and_returns_response_text(monkeypatch, caplog):
-    caplog.set_level("INFO", logger=llm_service.__name__)
+    caplog.set_level("DEBUG", logger=llm_service.__name__)
     calls = {}
 
     class FakeResponses:
@@ -45,7 +45,7 @@ def test_ask_rejects_empty_prompt():
 
 
 def test_transform_uses_packaged_skill_instructions(monkeypatch, caplog):
-    caplog.set_level("INFO", logger=llm_service.__name__)
+    caplog.set_level("DEBUG", logger=llm_service.__name__)
     calls = {}
 
     class FakeResponses:
