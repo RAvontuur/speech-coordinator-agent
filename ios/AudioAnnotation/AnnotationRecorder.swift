@@ -8,8 +8,10 @@ final class AnnotationRecorder: NSObject, ObservableObject, AVAudioRecorderDeleg
 
     private var recorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var completedRecordingURL: URL?
     private var timer: Timer?
     private var completion: ((URL, Double) -> Void)?
+    private var onError: ((String) -> Void)?
 
     func requestPermissionAndStart(in folder: URL, completion: @escaping (URL, Double) -> Void, onDenied: @escaping (String) -> Void) {
         let session = AVAudioSession.sharedInstance()
@@ -41,20 +43,24 @@ final class AnnotationRecorder: NSObject, ObservableObject, AVAudioRecorderDeleg
     func cancel() {
         recorder?.stop()
         if let recordingURL {
-            try? FileManager.default.removeItem(at: recordingURL)
+            try? FileManager.default.removeItem(at: recordingURL.deletingLastPathComponent())
         }
         reset()
     }
 
     private func start(in folder: URL, completion: @escaping (URL, Double) -> Void, onDenied: @escaping (String) -> Void) {
+        let recordingID = UUID().uuidString
+        let audioFolder = folder.appendingPathComponent("audio", isDirectory: true)
+        let stagingFolder = audioFolder.appendingPathComponent(".recording-\(recordingID)", isDirectory: true)
+        let stagingURL = stagingFolder.appendingPathComponent("annotation-\(recordingID).m4a")
+        let completedURL = audioFolder.appendingPathComponent("annotation-\(recordingID).m4a")
         do {
-            let audioFolder = folder.appendingPathComponent("audio", isDirectory: true)
             try FileManager.default.createDirectory(at: audioFolder, withIntermediateDirectories: true)
-            let url = audioFolder.appendingPathComponent("annotation-\(UUID().uuidString).m4a")
+            try FileManager.default.createDirectory(at: stagingFolder, withIntermediateDirectories: true)
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.record, mode: .default)
             try session.setActive(true)
-            let recorder = try AVAudioRecorder(url: url, settings: [
+            let recorder = try AVAudioRecorder(url: stagingURL, settings: [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
                 AVSampleRateKey: 44_100,
                 AVNumberOfChannelsKey: 1,
@@ -63,12 +69,15 @@ final class AnnotationRecorder: NSObject, ObservableObject, AVAudioRecorderDeleg
             recorder.delegate = self
             recorder.prepareToRecord()
             guard recorder.record() else {
+                try? FileManager.default.removeItem(at: stagingFolder)
                 onDenied("The microphone could not start recording.")
                 return
             }
             self.recorder = recorder
-            recordingURL = url
+            recordingURL = stagingURL
+            completedRecordingURL = completedURL
             self.completion = completion
+            onError = onDenied
             isRecording = true
             elapsedTime = 0
             timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -76,20 +85,36 @@ final class AnnotationRecorder: NSObject, ObservableObject, AVAudioRecorderDeleg
                 self.elapsedTime = recorder.currentTime
             }
         } catch {
+            try? FileManager.default.removeItem(at: stagingFolder)
             onDenied("Unable to start recording: \(error.localizedDescription)")
         }
     }
 
     func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
-        let url = recordingURL
+        let stagingURL = recordingURL
+        let completedURL = completedRecordingURL
         let duration = recorder.currentTime
         let callback = completion
+        let errorCallback = onError
         reset()
-        guard flag, let url else {
-            if let url { try? FileManager.default.removeItem(at: url) }
+        guard flag, let stagingURL, let completedURL else {
+            if let stagingURL {
+                try? FileManager.default.removeItem(at: stagingURL.deletingLastPathComponent())
+            }
+            if !flag {
+                errorCallback?("The annotation recording did not finish successfully.")
+            }
             return
         }
-        callback?(url, duration)
+        do {
+            try FileManager.default.moveItem(at: stagingURL, to: completedURL)
+        } catch {
+            try? FileManager.default.removeItem(at: stagingURL.deletingLastPathComponent())
+            errorCallback?("Unable to finalize annotation recording: \(error.localizedDescription)")
+            return
+        }
+        try? FileManager.default.removeItem(at: stagingURL.deletingLastPathComponent())
+        callback?(completedURL, duration)
     }
 
     private func reset() {
@@ -97,7 +122,9 @@ final class AnnotationRecorder: NSObject, ObservableObject, AVAudioRecorderDeleg
         timer = nil
         recorder = nil
         recordingURL = nil
+        completedRecordingURL = nil
         completion = nil
+        onError = nil
         isRecording = false
         elapsedTime = 0
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
