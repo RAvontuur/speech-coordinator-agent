@@ -8,7 +8,8 @@ local process rather than connecting to an HTTP server.
 
 - Python 3.10+
 - Azure Cognitive Services Speech credentials
-- An OpenAI API key to use `ask_llm` and synthesize audio plans
+- An OpenAI API key for the speech MCP's optional `ask_llm` and legacy audio-plan
+  features; neither is required for the Copilot Chat dispatcher workflow
 - `ffmpeg` on `PATH` for M4A transcription
 
 ## Azure Speech connection requirements
@@ -54,6 +55,7 @@ AZURE_SPEECH_REGION=your_region_here
 OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-4o-mini
 LOG_FILE=/path/to/outdoor-speech-mcp.log
+# Legacy speech-MCP import/export setting; not used by the dispatcher
 ACTIVE_AUDIO_PLAN=/path/to/audio-plan
 AUDIO_PLAN_INTERVAL_SECONDS=10
 ```
@@ -95,12 +97,17 @@ The repository wrapper also starts the same server:
 
 ## MCP tools
 
+These tools describe the separately maintained speech MCP. Legacy audio-plan
+capabilities may remain available there for other integrations. The custom iOS
+AudioPlan app is legacy and is not required by the dispatcher; the dispatcher
+does not synthesize or export audio.
+
 - `run_speech_coordinator(message)` speaks a prompt, listens until the user
   says `submit`, and returns the collected transcript.
-- `synthesize_audio_plan(filename, output_dir)` supports `.md` and `.py` files.
+- Legacy `synthesize_audio_plan(filename, output_dir)` supports `.md` and `.py` files.
   Markdown uses the packaged markdown-to-TTS skill; Python source uses the
   python-to-TTS skill to explain code behavior in listenable prose. An OpenAI
-  model transforms the source before the iOS-compatible plan is generated.
+  model transforms the source before an audio plan is generated.
   Each timing sentence's `source_filename` is a Git file URL; explicit Markdown
   anchors are retained as URL fragments so annotations can be traced to a
   ticket.
@@ -115,8 +122,8 @@ The repository wrapper also starts the same server:
 - `process_plan_annotations(plan_path)` transcribes attached recordings when
   needed and returns each annotation's combined transcript with its sentence
   text, `source_file` Git URL, stable `<plan name>-<number>` anchor, and an
-  `audioannotation://` URL that navigates to that annotation in the iOS app
-  when its plan package is open.
+  `audioannotation://` URL for the legacy iOS app integration. This URL is not
+  needed to run the dispatcher in Copilot Chat.
 - `ask_llm(prompt, model)` sends a text prompt to OpenAI and returns the model's
   text response. It uses `OPENAI_MODEL` when `model` is omitted (default
   `gpt-4o-mini`) and requires `OPENAI_API_KEY` in the MCP server environment.
@@ -156,29 +163,32 @@ supplied it.
 The ticket tools are `list_tickets`, `get_ticket`, `validate_tickets`,
 `create_ticket`, `update_ticket`, and `transition_ticket`. Use
 `list_tickets(state="ready", output_mode="full")` to select implementation
-work. Its `file-format="markdown"` mode returns the Sprint Review Plan from
-all non-closed tickets by default. Save it as `plan.md` in a new local Sprint
-Review directory, then use `synthesize_audio_plan` and `export_plan` from
-`outdoor-speech-mcp` to generate and deploy the audio package.
+work. Its `file-format="markdown"` mode returns Markdown for all non-closed
+tickets by default. The dispatcher splits this into individual ticket files in
+a new Sprint Review directory; it does not create `combined.md`, synthesize
+audio, or export an audio package.
 Repository registration uses `list_repositories`, `get_repository`,
 `create_repository`, `update_repository`, and `delete_repository`.
 `select_ticket_repository` records a ticket's repository and resolved branches;
 `create_working_branch` creates or resumes its implementation branch before
 coder dispatch.
 
-The speech MCP owns plan synchronization through `next_plan_name`,
-`create_next_plan_dir`, `import_plan`, and `export_plan`. These tools replace
-the former `plan_sync.py` command-line helpers. Import/export use
-`ACTIVE_AUDIO_PLAN` and local `plans/` directories. The speech MCP requires
-`AZURE_SPEECH_KEY`, either `AZURE_SPEECH_REGION` or `AZURE_SPEECH_ENDPOINT`,
-and `OPENAI_API_KEY`.
+The speech MCP retains optional legacy plan synchronization through
+`next_plan_name`, `create_next_plan_dir`, `import_plan`, and `export_plan`.
+`ACTIVE_AUDIO_PLAN` applies only to those integrations. In the dispatcher
+workflow, Copilot Chat reads the supplied `plan_updates.md` first, then uses
+annotation tools if needed, and writes the review package as multiple Markdown
+files using workspace operations. Annotation import is used only if needed for
+annotation processing; synthesis, export, and the custom iOS AudioPlan app are
+not dispatcher requirements.
 
 ## Project architecture
 
 The repository's two local MCP servers are configured for the VS Code MCP
-client. The dispatcher coordinates their tools and delegates ticket coding and
-refinement; ticket records and local Sprint Review plans remain in this
-workspace.
+client. In Copilot Chat, the dispatcher first reads a supplied plan update, then
+uses ticket tools and (if needed) speech annotation tools; it delegates ticket
+coding and refinement. Ticket records and multi-file Sprint Review packages
+remain in this workspace.
 
 ```mermaid
 flowchart LR
@@ -191,19 +201,21 @@ flowchart LR
     ticket_files["tickets/<br/>ticket records, schema, repository registry"]
     speech_mcp["outdoor-speech-mcp"]
     plans["plans/<br/>local Sprint Review packages"]
-    active["ACTIVE_AUDIO_PLAN<br/>configured active package"]
+    updates["plans/.../plan-*-updates.md"]
+    copilot["Copilot Chat"]
 
     client -->|loads server commands from| config
     config -->|launches| ticket_mcp
     config -->|launches| speech_mcp
+    dispatcher -->|runs in| copilot
+    updates -->|read first| dispatcher
     dispatcher -->|uses ticket tools| ticket_mcp
-    dispatcher -->|uses audio-plan tools| speech_mcp
+    dispatcher -->|uses annotation tools if needed| speech_mcp
     dispatcher -->|delegates implementation| coder
     dispatcher -->|delegates flagged-ticket refinement| refinement
     ticket_mcp -->|validates and manages| ticket_files
-    speech_mcp -->|imports, exports, and creates plans in| plans
-    speech_mcp -->|imports from and exports to| active
-    speech_mcp -->|transcribes annotations for dispatcher| dispatcher
+    dispatcher -->|writes overview, update record, and ticket files| plans
+    speech_mcp -->|transcribes annotations if needed| dispatcher
     ticket_mcp -->|generates Sprint Review ticket Markdown| dispatcher
 ```
 
@@ -212,24 +224,31 @@ See the [dispatcher instructions](.github/agents/outdoor-ticket-dispatcher.agent
 
 ## Outdoor Ticket Dispatcher workflow
 
-The diagram follows the dispatcher instructions. Annotation and import failures
-stop processing before ticket dispatch; an empty ready queue still proceeds to
-the Sprint Review plan. The user-controlled review/testing path is separate
-from the normal dispatch cycle.
+The diagram follows the dispatcher instructions. The supplied update file is
+read first and converted into ready-to-paste Copilot Chat text. Annotation
+processing happens afterward, and an empty ready queue still produces the
+multi-file Sprint Review package. The user-controlled review/testing path is
+separate from the normal dispatch cycle.
 
 ```mermaid
 flowchart TD
-    start([Start]) --> latest["Find latest local Sprint Review plan"]
+    start([Start in Copilot Chat]) --> updates["Read supplied plan_updates.md"]
+    updates --> paste["Present ready-to-paste update text"]
+    paste --> apply_updates["Process update and record ticket actions"]
+    apply_updates --> latest["Find latest local Sprint Review plan"]
     latest --> exists{"Plan exists?"}
-    exists -->|No| baseline["Report that a baseline plan is needed; stop"]
-    exists -->|Yes| import["Import active plan"]
+    exists -->|No| baseline["Record missing annotation baseline; continue"]
+    exists -->|Yes| import["Import plan for annotation processing"]
     import --> imported{"Import succeeds?"}
-    imported -->|No| import_error["Report exact error; stop"]
+    imported -->|No| import_error["Record/report exact error; continue without stale copy"]
     imported -->|Yes| annotations["Process plan annotations"]
+    baseline --> inspect["Inspect all open tickets and readiness"]
+    import_error --> inspect
     annotations --> any_annotations{"Annotations returned?"}
-    any_annotations -->|No| none["Tell user; stop before ticket dispatch"]
+    any_annotations -->|No| none["Record no annotations"]
     any_annotations -->|Yes| match["Match notes to tickets; update or create tickets"]
-    match --> inspect["Inspect all open tickets and readiness"]
+    none --> inspect
+    match --> inspect
     inspect --> gaps{"Refinement gaps or missing routing?"}
     gaps -->|Yes| refine["Refine flagged tickets"]
     refine --> recheck{"Any readiness or routing gaps remain?"}
@@ -259,11 +278,10 @@ flowchart TD
     review --> next_ticket
     next_ticket -->|Yes| dependency
     next_ticket -->|No| plan_dir
-    plan_dir --> ticket_plan["Generate Markdown for all non-closed tickets"]
-    ticket_plan --> write["Write plan.md with annotation record first"]
-    write --> synthesize["Synthesize audio plan and verify generated package"]
-    synthesize --> export["Export plan to configured active destination"]
-    export --> done([Report paths and remaining blockers])
+    plan_dir --> ticket_plan["Get Markdown for all non-closed tickets"]
+    ticket_plan --> split["Write overview.md, update-processing-record.md, and ticket-ID.md files"]
+    split --> verify["Verify links and absence of combined.md/audio artifacts"]
+    verify --> done([Report Copilot Chat output path and remaining blockers])
 
     review -. "only on explicit user request" .-> accept{"User requests review acceptance?"}
     accept -->|Yes| merge["Transition to test; service merges into target"]
